@@ -1,0 +1,289 @@
+from Agent import Agent
+import numpy as np
+import keras.backend as K
+from keras.models import Model, model_from_config
+from keras.layers import Lambda, Input, Layer, Dense
+from keras.losses import mean_squared_error
+import random
+
+class ReplayMemory:
+    
+    M = 1
+    
+    def __init__(self, size):
+        self.MaxSize = size
+        self.HighWater = int(size*1.3)
+        self.Memory = []
+        self.ShortTermMemory = []
+        
+    def add(self, tup):   
+        self.ShortTermMemory.append(tup)
+            
+    def add_to_long(self, tups):
+        self.Memory.extend(tups)
+        if len(self.Memory) > self.HighWater:
+            self.Memory = random.sample(self.Memory, self.MaxSize)
+        
+    def sample(self, size):
+        shorts = self.ShortTermMemory[:size]
+        n_short = len(shorts)
+        self.ShortTermMemory = self.ShortTermMemory[n_short:]
+        n_long = min(len(self.Memory), size - n_short)
+        longs = random.sample(self.Memory, n_long) if n_long > 0 else []
+        self.add_to_long(shorts)
+        return shorts + longs
+        
+    def size(self):
+        return len(self.Memory)+len(self.ShortTermMemory)
+
+    def sizes(self):
+        return len(self.Memory), len(self.ShortTermMemory)
+        
+def clone_model(model, custom_objects={}):
+    # Requires Keras 1.0.7 since get_config has breaking changes.
+    config = {
+        'class_name': model.__class__.__name__,
+        'config': model.get_config(),
+    }
+    clone = model_from_config(config, custom_objects=custom_objects)
+    clone.set_weights(model.get_weights())
+    return clone
+    
+def max_valid(q, valid):
+    return q[valid[np.argmax(q[valid])]]
+
+def format_batch(batch):
+    
+    # if the model takes multiple inputs, then batch is a list of lists like [x1, x2, x3].
+    # We need to convert that into [batch(x1), batch(x2, batch(x3)]
+    
+    if len(batch) == 0:
+        return batch
+        
+    row = batch[0]
+    if isinstance(row, (list, tuple)):
+        return [np.array(x) for x in zip(*batch)]
+    else:
+        return np.array(batch)
+        
+class QNet(object):
+    
+    def __init__(self, model):
+        self.Model = model
+
+    def compile(self, optimizer, metrics=[]):
+        
+        self.TargetModel = clone_model(self.Model)
+        self.TargetModel.compile(optimizer='sgd', loss='mse')
+        self.Model.compile(optimizer='sgd', loss='mse')
+        
+        y_pred = self.Model.output
+        out_shape = self.Model.output.shape[1:]
+        print "out_shape=", out_shape
+        y_true = Input(name='y_true_input', shape=out_shape)
+        mask = Input(name='mask', shape=out_shape)
+
+        def masked_error(args):
+            y_true, y_pred, mask = args
+            #assert y_true.shape == y_pred.shape, "y_true.shape %s != y_pred.shape %s" % (y_true.shape, y_pred.shape)
+            #assert y_true.shape == mask.shape, "y_true.shape %s != mask.shape %s" % (y_true.shape, mask.shape)
+            loss = K.square(y_true-y_pred)*mask
+            return K.sum(loss, axis=-1)
+        
+        loss_out = Lambda(masked_error, output_shape=(1,), name='masked_loss')([y_true, y_pred, mask])
+        ins = self.Model.inputs
+        trainable = Model(inputs=ins + [y_true, mask], outputs=[loss_out, y_pred])
+        
+        print("--- trainable model summary ---")
+        print(trainable.summary())
+        
+        
+        
+        #assert len(trainable_model.output_names) == 2
+        #combined_metrics = {trainable_model.output_names[1]: metrics}
+        losses = [
+            lambda y_true, y_pred: y_pred,                  # loss is computed in Lambda layer
+            lambda y_true, y_pred: K.zeros_like(y_pred),    # we only include this for the metrics
+        ]
+        trainable.compile(optimizer=optimizer, loss=losses, metrics=metrics)
+        self.TrainModel = trainable
+        
+    def compute(self, batch):
+        return self.Model.predict_on_batch(batch)
+        
+    def train(self, samples, gamma):
+        # samples is list of tuples:
+        # (last_observation, action, reward, new_observation, final, valid_actions, info)
+        
+        batch_size = len(samples)
+        
+        batches = zip(*samples)
+        state0_batch = format_batch(batches[0])
+        action_batch = np.array(batches[1])
+        reward_batch = np.array(batches[2])
+        state1_batch = format_batch(np.array(batches[3]))
+        final_state1_batch = np.array(batches[4])
+        final_mask_batch = 1.0 - final_state1_batch
+        valid_actions_batch = np.array(batches[5])
+        infos = batches[6]
+        
+        q_state1_batch = self.TargetModel.predict_on_batch(state1_batch)
+        nactions = q_state1_batch.shape[-1]
+        qmax_state1_batch = []
+        for i, row in enumerate(q_state1_batch):
+            valid = valid_actions_batch[i]
+            assert final_state1_batch[i] or len(valid) > 0
+            qmax_state1_batch.append(max_valid(row, valid) if len(valid) else 0.0)
+        qmax_state1_batch = np.array(qmax_state1_batch)
+        #print "QNet.train: q_state1_batch:     ", q_state1_batch
+        #print "QNet.train: valid_actions_batch:", valid_actions_batch
+        #print "QNet.train: qmax_state1_batch:  ", qmax_state1_batch
+
+        targets = np.zeros((batch_size, nactions))
+        dummy_targets = np.zeros((batch_size,))
+        masks = np.zeros((batch_size, nactions))
+
+        # Compute r_t + gamma * max_a Q(s_t+1, a) and update the target targets accordingly,
+        # but only for the affected output units (as given by action_batch).
+        # Set discounted reward to zero for all states that were terminal.
+        #print "QNet.train:", gamma, qmax_state1_batch, final_mask_batch
+        discounted_reward_batch = qmax_state1_batch * final_mask_batch * gamma
+        
+        #print
+        #print "train: reward_batch=\n", reward_batch
+        #print "train: final_mask_batch=\n", final_mask_batch
+        #print "train: qmax_state1_batch=\n", qmax_state1_batch
+        #print "train: discounted=\n", discounted_reward_batch
+        
+        #print discounted_reward_batch
+        assert discounted_reward_batch.shape == reward_batch.shape
+        #print "train: reward_batch", reward_batch
+        #print "train: discounted_reward_batch:", discounted_reward_batch
+        Rs = reward_batch + discounted_reward_batch
+        for idx, (target, mask, R, action) in enumerate(zip(targets, masks, Rs, action_batch)):
+            target[action] = R  # update action with estimated accumulated reward
+            dummy_targets[idx] = R
+            mask[action] = 1.  # enable loss for this specific action
+        targets = np.array(targets).astype('float32')
+        masks = np.array(masks).astype('float32')
+
+        #print "train: target=\n", targets
+        #print "train: masks=\n", masks
+
+        # Finally, perform a single update on the entire batch. We use a dummy target since
+        # the actual loss is computed in a Lambda layer that needs more complex input. However,
+        # it is still useful to know the actual target to compute metrics properly.
+        #print "QNet.train: y_true shapes:", dummy_targets.shape, targets.shape
+        metrics = self.TrainModel.train_on_batch([state0_batch, targets, masks], [dummy_targets, targets])
+        return metrics, self.TrainModel.metrics_names
+        
+    def update(self):
+        self.TargetModel.set_weights(self.Model.get_weights())
+        
+        
+        
+            
+class DQNAgent(Agent):
+    
+    def __init__(self, env, qnet, memory_size = 100000, 
+            gamma = 0.9,
+            steps_between_train = 100, episodes_between_train = 1, train_sample_size = 30, train_rounds = 20,
+            trains_between_updates = 100,
+            **super_args):
+        
+        Agent.__init__(self, env, **super_args)
+        self.Memory = ReplayMemory(memory_size)
+        self.QNet = qnet
+        assert isinstance(qnet, QNet)
+        self.reset_states()
+        self.StepsBetweenTrain = steps_between_train
+        self.EpisodesBetweenTrain = episodes_between_train
+        self.StepsToTrain = steps_between_train
+        self.EpisodesToTrain = episodes_between_train
+        self.TrainSampleSize = train_sample_size
+        self.TrainsBetweenUpdates = trains_between_updates
+        self.TrainsToUpdate = trains_between_updates
+        self.TrainRounds = train_rounds
+        #self.StepsToWarmup = steps_to_warmup
+        self.Gamma = gamma
+        
+    def qvector(self, observation):
+        x = format_batch([observation])
+        #print "qvector: x=", x
+        return self.QNet.compute(x)[0]
+        
+    def recordTransition(self, last_observation, action, reward, new_observation, final, valid_actions, info = None):
+        if last_observation is not None:
+            #print
+            #print "     record: o0:", last_observation, " a:", action, \
+            #    " r:",reward, " o1:", new_observation, " f:",final, " v:",valid_actions, " i:", info
+            #print
+            tup = (last_observation, action, reward, new_observation, final, valid_actions, info)
+            self.Memory.add(tup)
+
+    def reset_states(self):
+        self.LastObservation = None
+        self.LastQVector = None
+        self.LastAction = None
+        self.LastReward = None
+
+    def action(self, observation, policy):
+        
+        valid_actions = self.updateState(observation)
+        qvector = self.qvector(observation)
+        action = policy(qvector, valid_actions)
+        
+        #print "action: o0:", observation, " v:", valid_actions, " q:", qvector, " a:", action
+        
+        if self.Training:
+            self.recordTransition(self.LastObservation, self.LastAction, self.LastReward, observation, False, valid_actions,
+                info = self.Env.info())
+
+        self.LastObservation = observation
+        self.LastQVector = qvector
+        self.LastAction = action
+        return action, valid_actions
+        
+    def learn(self, reward, new_observation, final):
+        #print "learn: r:", reward, " o1:", new_observation, " f:", final
+        self.LastReward = reward
+        self.StepsToTrain -= 1
+        if self.StepsToTrain <= 0:
+            self.trainQNet()
+            
+    def final(self, final_observation):
+        #print "final: o:", final_observation
+        if self.Training:
+            self.recordTransition(self.LastObservation, self.LastAction, self.LastReward, final_observation, True, [])
+        
+    
+    def episodeEnd(self):
+        if self.Training:
+            self.EpisodesToTrain -= 1
+            if self.EpisodesToTrain <= 0:
+                self.trainQNet()
+        
+    def trainQNet(self):
+        if self.Memory.size() >= self.TrainSampleSize:
+            for train_round in xrange(self.TrainRounds):
+                samples = self.Memory.sample(self.TrainSampleSize)
+                metrics, metrics_names = self.QNet.train(samples, self.Gamma)
+                #print "metrics:"
+                #for m, mn in zip(metrics, metrics_names):
+                #    print "   %s: %s" % (mn, m)
+            self.StepsToTrain = self.StepsBetweenTrain
+            self.EpisodesToTrain = self.EpisodesBetweenTrain
+
+            self.TrainsToUpdate -= 1
+            if self.TrainsToUpdate <= 0:
+                self.updateQNet()
+                
+    def updateQNet(self):
+        self.QNet.update()
+        #print "QNet upated"
+        self.TrainsToUpdate = self.TrainsBetweenUpdates
+        
+            
+        
+        
+    
