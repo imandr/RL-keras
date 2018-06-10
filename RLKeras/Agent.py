@@ -36,6 +36,8 @@ class Agent(object):
         callbacks = CallbackList(callbacks)
         callbacks._set_env(self.Env)
         
+        self.Callbacks = callbacks
+        
         policy = self.TrainPolicy if training else self.TestPolicy
         
         assert max_episodes is not None or max_steps is not None
@@ -65,9 +67,9 @@ class Agent(object):
                 nsteps += 1
                 episode_reward += reward
                 if training:
-                    metrics = self.learn(reward, new_observation, done)
+                    metrics, metrics_names = self.learn(reward, new_observation, done)
                 else:
-                    metrics = None
+                    metrics, metrics_names = None, None
                     
                 step_logs = {
                     'observation': observation,
@@ -79,6 +81,7 @@ class Agent(object):
                     'episode': nepisodes,
                     'info': info,
                     'metrics': metrics,
+                    'metrics_names': metrics_names,
                     'episode_step': episode_step
                 }
                 episode_step += 1

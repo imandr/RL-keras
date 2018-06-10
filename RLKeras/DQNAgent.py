@@ -4,7 +4,7 @@ import keras.backend as K
 from keras.models import Model, model_from_config
 from keras.layers import Lambda, Input, Layer, Dense
 from keras.losses import mean_squared_error
-import random
+import random, math
 
 class ReplayMemory:
     
@@ -175,7 +175,11 @@ class QNet(object):
         # it is still useful to know the actual target to compute metrics properly.
         #print "QNet.train: y_true shapes:", dummy_targets.shape, targets.shape
         metrics = self.TrainModel.train_on_batch([state0_batch, targets, masks], [dummy_targets, targets])
-        return metrics, self.TrainModel.metrics_names
+        metrics_names = self.TrainModel.metrics_names
+        #print "-- metrics --"
+        #for idx, (mn, m) in enumerate(zip(metrics_names, metrics)):
+        #    print "%d: %s = %s" % (idx, mn, m)
+        return metrics, metrics_names
         
     def update(self):
         self.TargetModel.set_weights(self.Model.get_weights())
@@ -203,7 +207,11 @@ class DQNAgent(Agent):
         self.TrainSampleSize = train_sample_size
         self.TrainsBetweenUpdates = trains_between_updates
         self.TrainsToUpdate = trains_between_updates
-        self.TrainRounds = train_rounds
+        self.TrainRoundsPerSession = train_rounds
+        self.SessionsTrained = 0
+        self.BatchesTrained = 0
+        self.SamplesTrained = 0
+        self.QNetUpdated = 0
         #self.StepsToWarmup = steps_to_warmup
         self.Gamma = gamma
         
@@ -246,10 +254,12 @@ class DQNAgent(Agent):
         
     def learn(self, reward, new_observation, final):
         #print "learn: r:", reward, " o1:", new_observation, " f:", final
+        metrics, metrics_names = None, None
         self.LastReward = reward
         self.StepsToTrain -= 1
-        if self.StepsToTrain <= 0:
-            self.trainQNet()
+        if self.StepsToTrain <= 0 or self.EpisodesToTrain <= 0:
+            metrics, metrics_names = self.trainQNet()
+        return metrics, metrics_names
             
     def final(self, final_observation):
         #print "final: o:", final_observation
@@ -260,28 +270,57 @@ class DQNAgent(Agent):
     def episodeEnd(self):
         if self.Training:
             self.EpisodesToTrain -= 1
-            if self.EpisodesToTrain <= 0:
-                self.trainQNet()
         
     def trainQNet(self):
+        metrics, metrics_names = None, None
         if self.Memory.size() >= self.TrainSampleSize:
-            for train_round in xrange(self.TrainRounds):
+            for train_round in xrange(self.TrainRoundsPerSession):
                 samples = self.Memory.sample(self.TrainSampleSize)
                 metrics, metrics_names = self.QNet.train(samples, self.Gamma)
+                self.LastMetrics, self.LastMetricsNames = metrics, metrics_names
+                self.SamplesTrained += len(samples)
+                self.BatchesTrained += 1
                 #print "metrics:"
                 #for m, mn in zip(metrics, metrics_names):
                 #    print "   %s: %s" % (mn, m)
+                if self.Callbacks is not None:
+                    self.Callbacks.on_train_batch_end(self.BatchesTrained,
+                        {
+                            "train_sessions": self.SessionsTrained,
+                            "train_samples": self.SamplesTrained,
+                            "metrics": metrics,
+                            "metrics_names": metrics_names,
+                            "train_batches": self.BatchesTrained,
+                            "memory_size": self.Memory.size()
+                        })
             self.StepsToTrain = self.StepsBetweenTrain
             self.EpisodesToTrain = self.EpisodesBetweenTrain
+            
+            self.SessionsTrained += 1
 
+            if self.Callbacks is not None:
+                self.Callbacks.on_train_session_end(self.SessionsTrained,
+                    {
+                        "train_sessions": self.SessionsTrained,
+                        "train_samples": self.SamplesTrained,
+                        "metrics": metrics,
+                        "metrics_names": metrics_names,
+                        "train_batches": self.BatchesTrained,
+                        "memory_size": self.Memory.size()
+                    })
             self.TrainsToUpdate -= 1
             if self.TrainsToUpdate <= 0:
                 self.updateQNet()
+        return metrics, metrics_names
                 
     def updateQNet(self):
         self.QNet.update()
         #print "QNet upated"
         self.TrainsToUpdate = self.TrainsBetweenUpdates
+        self.QNetUpdated += 1
+        if self.Callbacks is not None:
+            self.Callbacks.on_qnet_update(self.QNetUpdated, {})
+        
         
             
         

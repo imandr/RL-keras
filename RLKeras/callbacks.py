@@ -40,6 +40,18 @@ class Callback(KerasCallback):
         """Called at end of each action"""
         pass
 
+    def on_train_session_end(self, nsessions, logs={}):
+        """Called at end of each action"""
+        pass
+        
+    def on_train_batch_end(self, nbatches, logs={}):
+        """Called at end of each action"""
+        pass
+
+    def on_qnet_update(self, nupdates, logs={}):
+        """Called at end of each action"""
+        pass
+
 
 class CallbackList(KerasCallbackList):
     def _set_env(self, env):
@@ -100,6 +112,23 @@ class CallbackList(KerasCallbackList):
             if callable(getattr(callback, 'on_action_end', None)):
                 callback.on_action_end(action, logs=logs)
 
+    def on_train_session_end(self, nsessions, logs={}):
+        """Called at end of each action"""
+        for callback in self.callbacks:
+            if callable(getattr(callback, 'on_train_session_end', None)):
+                callback.on_train_session_end(nsessions, logs=logs)
+        
+    def on_train_batch_end(self, nbatches, logs={}):
+        """Called at end of each action"""
+        for callback in self.callbacks:
+            if callable(getattr(callback, 'on_train_batch_end', None)):
+                callback.on_train_batch_end(nbatches, logs=logs)
+
+    def on_qnet_update(self, nupdates, logs={}):
+        """Called at end of each action"""
+        for callback in self.callbacks:
+            if callable(getattr(callback, 'on_qnet_update', None)):
+                callback.on_qnet_update(nupdates, logs=logs)
 
 class TestLogger(Callback):
     """ Logger Class for Test """
