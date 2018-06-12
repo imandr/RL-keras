@@ -62,7 +62,7 @@ class SecretarySelectionEnv(gym.env):
     def render(self):
         hired_y, hired_i = None, None
         if self.Hired:  hired_y, hired_i = self.Hired
-        items = ["%7.3f %1s" % (y, '<' if self.I == i+1) for i, y in enumerate(self.YTrue)]
+        items = ["%7.3f %1s" % (y, '<' if self.I == i+1 else ' ') for i, y in enumerate(self.YTrue)]
         print "%s %s" % (
             " ".join(items),
             "hired %.3f" % (self.hired_y/max(self.YTrue),) if hired_y is not None else ""
