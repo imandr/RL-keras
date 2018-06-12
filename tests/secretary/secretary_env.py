@@ -54,7 +54,18 @@ class SecretarySelectionEnv(gym.env):
             [np.float32(self.I)/np.float32(self.NCandidates)],
             self.Y
             ))
-        return obs, reward, hired_y is not None, {}
-        
+        return obs, reward, hired_y is not None, {
+            "y": self.YTrue,
+            "n_seen": self.I
+        }
+
+    def render(self):
+        hired_y, hired_i = None, None
+        if self.Hired:  hired_y, hired_i = self.Hired
+        items = ["%7.3f %1s" % (y, '<' if self.I == i+1) for i, y in enumerate(self.YTrue)]
+        print "%s %s" % (
+            " ".join(items),
+            "hired %.3f" % (self.hired_y/max(self.YTrue),) if hired_y is not None else ""
+        )
             
     
