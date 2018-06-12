@@ -44,10 +44,12 @@ class Agent(object):
         
         nsteps = 0
         nepisodes = 0
+        callbacks.on_train_begin()
         while (max_episodes is None or nepisodes < max_episodes) and \
                     (max_steps is None or nsteps < max_steps):
             self.reset_states()
             self.episodeBegin()
+            callbacks.on_episode_begin(nepisodes)
             observation = self.Env.reset()
             episode_reward = 0.0
             episode_step = 0
@@ -98,6 +100,7 @@ class Agent(object):
             callbacks.on_episode_end(nepisodes, episode_logs)
             nepisodes += 1
             self.episodeEnd()
+        callbacks.on_train_end(logs={'did_abort': False})
             
     def fit(self, max_episodes = None, max_steps = None, callbacks = None):
         #print "fit"

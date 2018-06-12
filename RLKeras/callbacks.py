@@ -134,7 +134,7 @@ class TestLogger(Callback):
     """ Logger Class for Test """
     def on_train_begin(self, logs):
         """ Print logs at beginning of training"""
-        print('Testing for {} episodes ...'.format(self.params['nb_episodes']))
+        #print('Testing for {} episodes ...'.format(self.params['nb_episodes']))
 
     def on_episode_end(self, episode, logs):
         """ Print logs at end of each episode """

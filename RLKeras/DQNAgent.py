@@ -1,6 +1,7 @@
 from Agent import Agent
 import numpy as np
 import keras.backend as K
+from keras import optimizers
 from keras.models import Model, model_from_config
 from keras.layers import Lambda, Input, Layer, Dense
 from keras.losses import mean_squared_error
@@ -66,10 +67,39 @@ def format_batch(batch):
     else:
         return np.array(batch)
         
+class AdditionalUpdatesOptimizer(optimizers.Optimizer):
+    def __init__(self, optimizer, additional_updates):
+        super(AdditionalUpdatesOptimizer, self).__init__()
+        self.optimizer = optimizer
+        self.additional_updates = additional_updates
+
+    def get_updates(self, params, loss):
+        updates = self.optimizer.get_updates(params=params, loss=loss)
+        updates += self.additional_updates
+        self.updates = updates
+        return self.updates
+
+    def get_config(self):
+        return self.optimizer.get_config()
+
+def get_soft_target_model_updates(target, source, tau):
+    target_weights = target.trainable_weights + sum([l.non_trainable_weights for l in target.layers], [])
+    source_weights = source.trainable_weights + sum([l.non_trainable_weights for l in source.layers], [])
+    assert len(target_weights) == len(source_weights)
+
+    # Create updates.
+    updates = []
+    for tw, sw in zip(target_weights, source_weights):
+        updates.append((tw, tau * sw + (1. - tau) * tw))
+    return updates
+
+
 class QNet(object):
     
-    def __init__(self, model):
+    def __init__(self, model, soft_update = None):
         self.Model = model
+        assert soft_update is None or isinstance(soft_update, float) and soft_update < 1.0
+        self.SoftUpdate = soft_update
 
     def compile(self, optimizer, metrics=[]):
         
@@ -79,7 +109,6 @@ class QNet(object):
         
         y_pred = self.Model.output
         out_shape = self.Model.output.shape[1:]
-        print "out_shape=", out_shape
         y_true = Input(name='y_true_input', shape=out_shape)
         mask = Input(name='mask', shape=out_shape)
 
@@ -97,8 +126,12 @@ class QNet(object):
         print("--- trainable model summary ---")
         print(trainable.summary())
         
-        
-        
+
+        if self.SoftUpdate is not None:
+            # We use the `AdditionalUpdatesOptimizer` to efficiently soft-update the target model.
+            updates = get_soft_target_model_updates(self.TargetModel, self.Model, self.SoftUpdate)
+            optimizer = AdditionalUpdatesOptimizer(optimizer, updates)
+
         #assert len(trainable_model.output_names) == 2
         #combined_metrics = {trainable_model.output_names[1]: metrics}
         losses = [
@@ -226,8 +259,9 @@ class DQNAgent(Agent):
             #print "     record: o0:", last_observation, " a:", action, \
             #    " r:",reward, " o1:", new_observation, " f:",final, " v:",valid_actions, " i:", info
             #print
-            tup = (last_observation, action, reward, new_observation, final, valid_actions, info)
-            self.Memory.add(tup)
+            if final or random.random() < 0.5:
+                tup = (last_observation, action, reward, new_observation, final, valid_actions, info)
+                self.Memory.add(tup)
 
     def reset_states(self):
         self.LastObservation = None
@@ -245,7 +279,7 @@ class DQNAgent(Agent):
         
         if self.Training:
             self.recordTransition(self.LastObservation, self.LastAction, self.LastReward, observation, False, valid_actions,
-                info = self.Env.info())
+                info = {})
 
         self.LastObservation = observation
         self.LastQVector = qvector
@@ -273,6 +307,7 @@ class DQNAgent(Agent):
         
     def trainQNet(self):
         metrics, metrics_names = None, None
+        #print "trainQNet: memory sizes:", self.Memory.sizes()
         if self.Memory.size() >= self.TrainSampleSize:
             for train_round in xrange(self.TrainRoundsPerSession):
                 samples = self.Memory.sample(self.TrainSampleSize)
@@ -309,13 +344,13 @@ class DQNAgent(Agent):
                         "memory_size": self.Memory.size()
                     })
             self.TrainsToUpdate -= 1
-            if self.TrainsToUpdate <= 0:
+            if self.TrainsToUpdate <= 0 and self.QNet.SoftUpdate is None:
                 self.updateQNet()
         return metrics, metrics_names
                 
     def updateQNet(self):
         self.QNet.update()
-        #print "QNet upated"
+        print "QNet upated"
         self.TrainsToUpdate = self.TrainsBetweenUpdates
         self.QNetUpdated += 1
         if self.Callbacks is not None:
