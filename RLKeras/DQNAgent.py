@@ -53,6 +53,9 @@ def clone_model(model, custom_objects={}):
 def max_valid(q, valid):
     return q[valid[np.argmax(q[valid])]]
 
+def best_valid_action(q, valid):
+    return valid[np.argmax(q[valid])]
+
 def format_batch(batch):
     
     # if the model takes multiple inputs, then batch is a list of lists like [x1, x2, x3].
@@ -160,14 +163,20 @@ class QNet(object):
         valid_actions_batch = np.array(batches[5])
         infos = batches[6]
         
-        q_state1_batch = self.TargetModel.predict_on_batch(state1_batch)
-        nactions = q_state1_batch.shape[-1]
-        qmax_state1_batch = []
-        for i, row in enumerate(q_state1_batch):
+        q_values = self.Model.predict_on_batch(state1_batch)
+        nactions = q_values.shape[-1]
+        actions = np.zeros((batch_size,), dtype=np.int32)
+        for i, row in enumerate(q_values):
             valid = valid_actions_batch[i]
             assert final_state1_batch[i] or len(valid) > 0
-            qmax_state1_batch.append(max_valid(row, valid) if len(valid) else 0.0)
-        qmax_state1_batch = np.array(qmax_state1_batch)
+            if len(valid):
+                actions[i] = best_valid_action(row, valid)
+
+        # Now, estimate Q values using the target network but select the values with the
+        # highest Q value wrt to the online model (as computed above).
+        target_q_values = self.TargetModel.predict_on_batch(state1_batch)
+        qmax_state1_batch = target_q_values[range(batch_size), actions]
+
         #print "QNet.train: q_state1_batch:     ", q_state1_batch
         #print "QNet.train: valid_actions_batch:", valid_actions_batch
         #print "QNet.train: qmax_state1_batch:  ", qmax_state1_batch

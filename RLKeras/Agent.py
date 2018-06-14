@@ -74,6 +74,7 @@ class Agent(object):
                     metrics, metrics_names = None, None
                     
                 step_logs = {
+                    'done': done,
                     'observation': observation,
                     'valid_actions':valid_actions,
                     'qvector': self.LastQVector,
