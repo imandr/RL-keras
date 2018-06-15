@@ -18,14 +18,15 @@ class Stock:
         changes[0] = 1.0
         
         i = 1
-        while i < len(changes) - 6:
+        while i < len(changes) - 7:
             if random.random() < 0.05:
                 changes[i] -= self.V*3
                 changes[i+1] -= self.V*3
                 changes[i+2] -= self.V*3
                 changes[i+3] += self.V*3
                 changes[i+4] += self.V*3
-                i += 5
+                changes[i+5] -= self.V*3
+                i += 6
             else:
                 i += 1
         self.Prices = np.cumprod(changes)*self.P

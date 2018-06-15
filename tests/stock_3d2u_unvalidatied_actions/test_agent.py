@@ -77,13 +77,13 @@ nb_actions = env.action_space.n
 
 model = create_model(env.observation_space.shape[-1], env.action_space.n)
 
-qnet = QNet(model)
+qnet = QNet(model, soft_update=0.01)
 qnet.compile(Adagrad(), ["mse"])
 
 agent = PredictedAgent(env, qnet)
-for _ in range(2000):
-    agent.fit(max_steps=50000, callbacks=[TrainCallback()])
-    agent.TrainPolicy.Epsilon = max(agent.TrainPolicy.Epsilon*0.9, 0.2)
+for i in range(1000):
+    agent.fit(max_steps=1000, callbacks=[TrainCallback()])
+    agent.TrainPolicy.Epsilon = [0.5, 0.1][i%2]
     print "epsilon:", agent.TrainPolicy.Epsilon 
     agent.test(max_episodes=1, callbacks=[TestLogger(), ActionCallback()])
     

@@ -64,7 +64,7 @@ class SecretarySelectionEnv(gym.Env):
             [np.float32(self.I)/np.float32(self.NCandidates)],
             self.Y
             ))
-        print obs
+        #print obs
         return obs, reward, done, {
             "y": self.YTrue,
             "n_seen": self.I,
