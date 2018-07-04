@@ -1,5 +1,5 @@
-from policies import GreedyEpsPolicy
-from callbacks import CallbackList
+from ..policies import GreedyEpsPolicy
+from ..callbacks import CallbackList
 
 class Agent(object):
     
@@ -25,7 +25,11 @@ class Agent(object):
         raise NotImplementedError
 
     def final(self, observation):
-        raise NotImplementedError        
+        raise NotImplementedError
+        
+    @property
+    def done(self):
+        raise NotImplementedError
     
     def run(self, max_episodes, max_steps, callbacks, training):
         

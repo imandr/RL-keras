@@ -1,1 +1,1 @@
-export PYTHONPATH=`pwd`/RLKeras:$PYTHONPATH
+export PYTHONPATH=`pwd`:$PYTHONPATH

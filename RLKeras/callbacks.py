@@ -40,6 +40,14 @@ class Callback(KerasCallback):
         """Called at end of each action"""
         pass
 
+    def on_round_begin(self, round, logs={}):
+        """Called at beginning of each action"""
+        pass
+
+    def on_round_end(self, round, logs={}):
+        """Called at end of each action"""
+        pass
+
     def on_train_session_end(self, nsessions, logs={}):
         """Called at end of each action"""
         pass
@@ -79,6 +87,22 @@ class CallbackList(KerasCallbackList):
                 callback.on_episode_end(episode, logs=logs)
             else:
                 callback.on_epoch_end(episode, logs=logs)
+
+    def on_round_begin(self, round, logs={}):
+        """ Called at beginning of each round for each callback in callbackList"""
+        for callback in self.callbacks:
+            # Check if callback supports the more appropriate `on_episode_begin` callback.
+            # If not, fall back to `on_epoch_begin` to be compatible with built-in Keras callbacks.
+            if callable(getattr(callback, 'on_round_begin', None)):
+                callback.on_round_begin(round, logs=logs)
+
+    def on_round_end(self, round, logs={}):
+        """ Called at end of each round for each callback in callbackList"""
+        for callback in self.callbacks:
+            # Check if callback supports the more appropriate `on_episode_end` callback.
+            # If not, fall back to `on_epoch_end` to be compatible with built-in Keras callbacks.
+            if callable(getattr(callback, 'on_round_end', None)):
+                callback.on_round_begin(round, logs=logs)
 
     def on_step_begin(self, step, logs={}):
         """ Called at beginning of each step for each callback in callbackList"""

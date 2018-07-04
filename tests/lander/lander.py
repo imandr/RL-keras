@@ -1,10 +1,11 @@
 import gym, math
-from callbacks import Visualizer, TestLogger, Callback, TrainEpisodeLogger
 from keras.models import Model
 from keras.layers import Dense, Activation, Flatten, Input
 from keras.optimizers import Adam, Adagrad
-from policies import GreedyEpsPolicy
-from DQNAgent import DQNAgent, QNet
+
+from RLKeras import GreedyEpsPolicy, QNet, ReplayMemory
+from RLKeras.single import DQNAgent
+from RLKeras.callbacks import Visualizer, TestLogger, Callback, TrainEpisodeLogger
 from env import LunarLander
 
 def create_model(inp_width, out_width):
@@ -22,8 +23,8 @@ def create_model(inp_width, out_width):
 class TrainCallback(Callback):
     
     def on_train_session_end(self, nsessions, logs):
-        if nsessions % 100 == 0:
-            print "Train session %d: loss=%f" % (nsessions, math.sqrt(logs["metrics"][0]))
+        #if nsessions % 100 == 0:
+            print "Train session %d: loss=%f" % (nsessions, math.sqrt(logs["metrics"]))
         
     def on_qnet_update(self, nupdates, logs):
         #print "QNet updated"
@@ -41,14 +42,14 @@ class Lander(DQNAgent):
     def __init__(self, env, qnet):
         self.TrainPolicy = GreedyEpsPolicy(0.5)      
         self.TestPolicy = GreedyEpsPolicy(0.0)
-        DQNAgent.__init__(self, env, qnet, gamma=0.99,
+        self.Memory = ReplayMemory(100000)
+        DQNAgent.__init__(self, env, qnet, self.Memory, gamma=0.99,
                 train_policy=self.TrainPolicy, test_policy=self.TestPolicy,
                 steps_between_train = 500, episodes_between_train = 1, 
                 train_sample_size = 20, train_rounds = 100,
                 trains_between_updates = 1
         )
-        
-
+    
     def updateState(self, observation):
         return self.ValidActions
 
@@ -66,7 +67,9 @@ for t in range(2000):
     print "epsilon:", lander.TrainPolicy.Epsilon 
     lander.fit(max_episodes=5, callbacks=[TrainCallback(), EpisodeLogger()])
     #lander.TrainPolicy.Epsilon = max(lander.TrainPolicy.Epsilon*0.95, 0.2)
+    print "QNet train_samples=",qnet.TrainSamples, "  memory age=",lander.age
     lander.test(max_episodes=1, callbacks=[TestLogger(), Visualizer(), TrainCallback()])
+    
 
 
 
