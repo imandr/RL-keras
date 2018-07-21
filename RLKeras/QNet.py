@@ -4,6 +4,7 @@ from keras.layers import Lambda, Input, Layer, Dense
 import keras.backend as K
 from keras import optimizers
 from tools import best_valid_action, format_batch
+import time
 
 def clone_model(model, custom_objects={}):
     # Requires Keras 1.0.7 since get_config has breaking changes.
@@ -23,8 +24,13 @@ class AdditionalUpdatesOptimizer(optimizers.Optimizer):
 
     def get_updates(self, params, loss):
         updates = self.optimizer.get_updates(params=params, loss=loss)
+        self.updates = updates + self.additional_updates
+        return self.updates
+
+    def get_updates___(self, params, loss):
+        updates = self.optimizer.get_updates(params=params, loss=loss)
         updates += self.additional_updates
-        self.updates = updates
+        self.updates = updates + self.additional_updates
         return self.updates
 
     def get_config(self):
@@ -36,19 +42,17 @@ def get_soft_target_model_updates(target, source, tau):
     assert len(target_weights) == len(source_weights)
 
     # Create updates.
-    updates = []
-    for tw, sw in zip(target_weights, source_weights):
-        updates.append((tw, tau * sw + (1. - tau) * tw))
+    updates = [K.update(tw, tw + tau*(sw-tw)) for tw, sw in zip(target_weights, source_weights)]
     return updates
 
-
-class QNet(object):
+class DualQNet(object):
     
-    def __init__(self, model, soft_update = None):
+    def __init__(self, model, soft_update = None, gamma=0.99):
         self.Model = model
         assert soft_update is None or isinstance(soft_update, float) and soft_update < 1.0
         self.SoftUpdate = soft_update
         self.TrainSamples = 0
+        self.Gamma = gamma
 
     def compile(self, optimizer, metrics=[]):
         
@@ -93,82 +97,95 @@ class QNet(object):
     def compute(self, batch):
         return self.Model.predict_on_batch(batch)
         
-    def train(self, samples, gamma):
+    def train(self, sample, batch_size):
         # samples is list of tuples:
         # (last_observation, action, reward, new_observation, final, valid_actions, info)
         
-        batch_size = len(samples)
+        #print "samples:"
+        #for s in samples:
+        #    print s
+
+        metrics = None
         
-        batches = zip(*samples)
-        state0_batch = format_batch(batches[0])
-        action_batch = np.array(batches[1])
-        reward_batch = np.array(batches[2])
-        #print np.array(batches[3]).shape
-        state1_batch = format_batch(np.array(batches[3]))
-        final_state1_batch = np.array(batches[4])
-        final_mask_batch = 1.0 - final_state1_batch
-        valid_actions_batch = np.array(batches[5])
-        infos = batches[6]
+        for j in range(0, len(sample), batch_size):
+            batches = zip(*sample[j:j+batch_size])
+            batch_len = len(batches[0])
         
-        q_values = self.Model.predict_on_batch(state1_batch)
-        nactions = q_values.shape[-1]
-        actions = np.zeros((batch_size,), dtype=np.int32)
-        for i, row in enumerate(q_values):
-            valid = valid_actions_batch[i]
-            assert final_state1_batch[i] or len(valid) > 0
-            if len(valid):
-                actions[i] = best_valid_action(row, valid)
-
-        # Now, estimate Q values using the target network but select the values with the
-        # highest Q value wrt to the online model (as computed above).
-        target_q_values = self.TargetModel.predict_on_batch(state1_batch)
-        qmax_state1_batch = target_q_values[range(batch_size), actions]
-
-        #print "QNet.train: q_state1_batch:     ", q_state1_batch
-        #print "QNet.train: valid_actions_batch:", valid_actions_batch
-        #print "QNet.train: qmax_state1_batch:  ", qmax_state1_batch
-
-        targets = np.zeros((batch_size, nactions))
-        dummy_targets = np.zeros((batch_size,))
-        masks = np.zeros((batch_size, nactions))
-
-        # Compute r_t + gamma * max_a Q(s_t+1, a) and update the target targets accordingly,
-        # but only for the affected output units (as given by action_batch).
-        # Set discounted reward to zero for all states that were terminal.
-        #print "QNet.train:", gamma, qmax_state1_batch, final_mask_batch
-        discounted_reward_batch = qmax_state1_batch * final_mask_batch * gamma
+            state0_batch = format_batch(batches[0])
+            action_batch = np.array(batches[1])
+            reward_batch = np.array(batches[2])
+            #print np.array(batches[3]).shape
+            state1_batch = format_batch(np.array(batches[3]))
+            final_state1_batch = np.array(batches[4])
         
-        #print
-        #print "train: reward_batch=\n", reward_batch
-        #print "train: final_mask_batch=\n", final_mask_batch
-        #print "train: qmax_state1_batch=\n", qmax_state1_batch
-        #print "train: discounted=\n", discounted_reward_batch
+            #for _, a, r, _, f, _ in samples:
+            #    if f:
+            #        print a, r, f
+            final_mask_batch = 1.0 - final_state1_batch
+            valid_actions_batch = np.array(batches[5])
+            #infos = batches[6]
         
-        #print discounted_reward_batch
-        assert discounted_reward_batch.shape == reward_batch.shape
-        #print "train: reward_batch", reward_batch
-        #print "train: discounted_reward_batch:", discounted_reward_batch
-        Rs = reward_batch + discounted_reward_batch
-        for idx, (target, mask, R, action) in enumerate(zip(targets, masks, Rs, action_batch)):
-            target[action] = R  # update action with estimated accumulated reward
-            dummy_targets[idx] = R
-            mask[action] = 1.  # enable loss for this specific action
-        targets = np.array(targets).astype('float32')
-        masks = np.array(masks).astype('float32')
+            q_values = self.Model.predict_on_batch(state1_batch)
+            nactions = q_values.shape[-1]
+            actions = np.zeros((batch_len,), dtype=np.int32)
+            for i, row in enumerate(q_values):
+                valid = valid_actions_batch[i]
+                assert final_state1_batch[i] or len(valid) > 0
+                if len(valid):
+                    actions[i] = best_valid_action(row, valid)
 
-        #print "train: target=\n", targets
-        #print "train: masks=\n", masks
+            # Now, estimate Q values using the target network but select the values with the
+            # highest Q value wrt to the online model (as computed above).
+            target_q_values = self.TargetModel.predict_on_batch(state1_batch)
+            qmax_state1_batch = target_q_values[range(batch_len), actions]
 
-        # Finally, perform a single update on the entire batch. We use a dummy target since
-        # the actual loss is computed in a Lambda layer that needs more complex input. However,
-        # it is still useful to know the actual target to compute metrics properly.
-        #print "QNet.train: y_true shapes:", dummy_targets.shape, targets.shape
-        metrics = self.TrainModel.train_on_batch([state0_batch, targets, masks], [dummy_targets, targets])
-        metrics_names = self.TrainModel.metrics_names
-        #print "-- metrics --"
-        #for idx, (mn, m) in enumerate(zip(metrics_names, metrics)):
-        #    print "%d: %s = %s" % (idx, mn, m)
-        self.TrainSamples += batch_size
+            #print "QNet.train: q_state1_batch:     ", q_state1_batch
+            #print "QNet.train: valid_actions_batch:", valid_actions_batch
+            #print "QNet.train: qmax_state1_batch:  ", qmax_state1_batch
+
+            targets = np.zeros((batch_len, nactions))
+            dummy_targets = np.zeros((batch_len,))
+            masks = np.zeros((batch_len, nactions))
+
+            # Compute r_t + gamma * max_a Q(s_t+1, a) and update the target targets accordingly,
+            # but only for the affected output units (as given by action_batch).
+            # Set discounted reward to zero for all states that were terminal.
+            #print "QNet.train:", gamma, qmax_state1_batch, final_mask_batch
+            discounted_reward_batch = qmax_state1_batch * final_mask_batch * self.Gamma
+        
+            #print
+            #print "train: reward_batch=\n", reward_batch
+            #print "train: final_mask_batch=\n", final_mask_batch
+            #print "train: qmax_state1_batch=\n", qmax_state1_batch
+            #print "train: discounted=\n", discounted_reward_batch
+        
+            #print discounted_reward_batch
+            assert discounted_reward_batch.shape == reward_batch.shape
+            #print "train: reward_batch", reward_batch
+            #print "train: discounted_reward_batch:", discounted_reward_batch
+            Rs = reward_batch + discounted_reward_batch
+            for idx, (target, mask, R, action) in enumerate(zip(targets, masks, Rs, action_batch)):
+                target[action] = R  # update action with estimated accumulated reward
+                dummy_targets[idx] = R
+                mask[action] = 1.  # enable loss for this specific action
+            targets = np.array(targets).astype('float32')
+            masks = np.array(masks).astype('float32')
+
+            #print "train: target=\n", targets
+            #print "train: masks=\n", masks
+
+            # Finally, perform a single update on the entire batch. We use a dummy target since
+            # the actual loss is computed in a Lambda layer that needs more complex input. However,
+            # it is still useful to know the actual target to compute metrics properly.
+            #print "QNet.train: y_true shapes:", dummy_targets.shape, targets.shape
+            t0 = time.time()
+            metrics = self.TrainModel.train_on_batch([state0_batch, targets, masks], [dummy_targets, targets])
+            #print "train time:", time.time() - t0
+            metrics_names = self.TrainModel.metrics_names
+            #print "-- metrics --"
+            #for idx, (mn, m) in enumerate(zip(metrics_names, metrics)):
+            #    print "%d: %s = %s" % (idx, mn, m)
+            self.TrainSamples += batch_len
         return metrics[0]
         
     def update(self):
@@ -176,3 +193,128 @@ class QNet(object):
             self.TargetModel.set_weights(self.Model.get_weights())
             print "target network updated"
 
+        
+class DifferentialQNet(object):
+    def __init__(self, model, gamma = 0.9):
+        self.Model = model
+        self.TrainSamples = 0
+        self.Gamma = K.variable(gamma, dtype='float32')
+        self.NActions = self.Model.output.shape[-1]
+        
+    def get_weights(self):
+        return self.Model.get_weights()
+        
+    def mix_weights(self, weights, alpha):
+        my_weights = self.Model.get_weights()
+        assert len(weights) == len(my_weights)
+        for my_w, w in zip(my_weights, weights):
+            my_w.flat[:] = my_w.flat*(1-alpha)+w.flat*alpha
+        self.Model.set_weights(my_weights)
+
+    def compile(self, optimizer, metrics=[]):
+        
+        self.Model.compile(optimizer='sgd', loss='mse')
+        
+        x_shape = self.Model.inputs[0].shape[1:]
+        print "x_shape=", x_shape
+        q_shape = self.Model.output.shape[1:]
+        print "q_shape=", q_shape
+        x0 = Input(name="observation0", shape=x_shape)
+        q0 = self.Model(x0)
+        x1 = Input(name="observation1", shape=x_shape)
+        q1 = self.Model(x1)
+        mask = Input(name='mask', shape=q_shape)
+        final = Input(name="final", shape=(1,))
+        
+        def differential(args):
+            q0, q1, final, mask = args
+            #final_expanded = K.expand_dims(final, 1)
+            #print "q0 shape:", q0.shape
+            #print "q1 shape:", q1.shape
+            #print "mask shape:", mask.shape
+            #print "final shape:", final.shape
+            q0 = K.sum(q0*mask, axis=-1)[:,None]
+            #print "q0.shape=", q0.shape
+            q1max = K.max(q1, axis=-1)[:,None]
+            print "q1max.shape=", q1max.shape
+            diff = q0 - (1.0-final) * self.Gamma * q1max
+            #print "diff.shape=",diff.shape
+            #print diff.shape
+            return diff
+            
+        reward = Lambda(differential, name="reward")([q0, q1, final, mask])
+        
+        trainable = Model(inputs = [x0, x1, final, mask], outputs = reward)
+    
+        trainable.compile(
+                optimizer=optimizer, 
+                metrics=metrics,      # metrics for the second output
+                loss='mean_squared_error'
+        )    
+
+        print("--- trainable model summary ---")
+        print(trainable.summary())
+        
+        self.TrainModel = trainable
+        
+    def compute(self, batch):
+        return self.Model.predict_on_batch(batch)
+        
+    def train(self, sample, batch_size):
+        # samples is list of tuples:
+        # (last_observation, action, reward, new_observation, final, valid_actions, info)
+        
+        assert len(sample) >= batch_size
+        
+        for j in range(0, len(sample), batch_size):
+            batches = zip(*sample[j:j+batch_size])
+            batch_len = len(batches[0])
+        
+            #print "samples:"
+            #for s in samples:
+            #    print s
+        
+            state0_batch = format_batch(batches[0])
+            action_batch = np.array(batches[1])
+            reward_batch = np.array(batches[2]).reshape((-1,1))
+            state1_batch = format_batch(np.array(batches[3]))
+            final_state1_batch = batches[4]
+            #print "training: max reward=",max(reward_batch)
+            #print final_state1_batch
+        
+            #valid_actions_batch = np.array(batches[5])
+            #infos = batches[6]
+            finals = np.zeros((batch_len, 1), dtype=np.float32)
+            masks = np.zeros((batch_len, self.NActions), dtype=np.float32)
+            for mask, action, final, is_final in zip(masks, action_batch, finals, final_state1_batch):
+                mask[action] = 1.  # enable loss for this specific action
+                final[:] = is_final # ? 1.0 else 0.0
+            #print "train: target=", targets, "  dummy_targets=", dummy_targets
+
+            #print "train: masks:", masks
+            #print "train: finals:", finals
+
+            #print final_state1_batch.shape
+        
+            t0 = time.time()
+        
+            #print "state0_batch:", state0_batch
+            #print "state1_batch:", state1_batch
+            #print "finals:", finals
+            #print "masks:", masks
+            #print "rewards:", reward_batch
+            
+            metrics = self.TrainModel.train_on_batch(
+                [state0_batch, state1_batch, finals, masks], 
+                reward_batch)
+            #print "batch sizes:", len(state0_batch), len(state1_batch), len(reward_batch), len(state0_batch), \
+            #    len(final_state1_batch),  len(masks), len(dummy_targets)
+            #print "train time:", time.time() - t0
+            #print "-- metrics --"
+            #for idx, (mn, m) in enumerate(zip(metrics_names, metrics)):
+            #    print "%d: %s = %s" % (idx, mn, m)
+            self.TrainSamples += batch_len
+        return metrics[0]
+        
+    def update(self):
+        pass

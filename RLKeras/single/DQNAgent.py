@@ -4,10 +4,8 @@ from keras.models import Model
 from keras.layers import Lambda, Input, Layer, Dense
 from keras.losses import mean_squared_error
 import random, math
-from ..Memory import ReplayMemory
-from ..QNet import QNet
 
-from ..tools import max_valid, best_valid_action, format_batch
+from ..tools import format_batch
         
 
         

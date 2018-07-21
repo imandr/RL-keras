@@ -56,6 +56,14 @@ class Callback(KerasCallback):
         """Called at end of each action"""
         pass
 
+    def on_run_begin(self, param, logs={}):
+        """Called at end of each action"""
+        pass
+        
+    def on_run_end(self, param, logs={}):
+        """Called at end of each action"""
+        pass
+
     def on_qnet_update(self, nupdates, logs={}):
         """Called at end of each action"""
         pass
@@ -140,7 +148,22 @@ class CallbackList(KerasCallbackList):
         """Called at end of each action"""
         for callback in self.callbacks:
             if callable(getattr(callback, 'on_train_session_end', None)):
+                #print ("calling on_train_session_end")
                 callback.on_train_session_end(nsessions, logs=logs)
+        
+    def on_run_begin(self, param, logs={}):
+        """Called at start of each run"""
+        for callback in self.callbacks:
+            if callable(getattr(callback, 'on_run_begin', None)):
+                #print ("calling on_train_session_end")
+                callback.on_run_begin(param, logs=logs)
+        
+    def on_run_end(self, param, logs={}):
+        """Called at end of each run"""
+        for callback in self.callbacks:
+            if callable(getattr(callback, 'on_run_end', None)):
+                #print ("calling on_train_session_end")
+                callback.on_run_end(param, logs=logs)
         
     def on_train_batch_end(self, nbatches, logs={}):
         """Called at end of each action"""

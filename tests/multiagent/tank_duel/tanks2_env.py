@@ -5,6 +5,13 @@ from gym.envs.classic_control import rendering
 class Space:
     def __init__(self, shape):
         self.shape = shape
+        
+def angle_in_range(a):
+    while a >= math.pi:
+        a -= math.pi*2
+    while a < -math.pi:
+        a += math.pi*2
+    return a
 
 class TankDuelEnv(object):
     
@@ -35,6 +42,9 @@ class TankDuelEnv(object):
         self.observation_space = Space((10,))
         self.actions_space = Space((self.NACTIONS,))
         self.T = self.TMAX
+        
+    def over(self):
+        return self.T <= 0
 
     def reset(self, tanks):
         assert len(tanks) == 2
@@ -51,6 +61,10 @@ class TankDuelEnv(object):
     
     def observe(self, tanks):
         out = []
+
+        nalive = sum([1 for t in self.Tanks if not t.killed], 0)
+        game_over = nalive <= 1
+
         for i, t in enumerate(self.Tanks):
             t1 = self.Tanks[1-i]
             dxy = t1.xy - t.xy
@@ -74,12 +88,15 @@ class TankDuelEnv(object):
             
             if i == 0:
                 assert observation.shape == self.observation_space.shape
-            out.append((t, observation, self.ALL_ACTIONS))
+            out.append((t, observation, self.ALL_ACTIONS, game_over, {}))
         return out
             
     def step(self, agents_actions, agent=None):
         if not isinstance(agents_actions, list):
             agents_actions = [(agent, agents_actions)]
+            
+        for t in self.Tanks:
+            t.reward = 0.0
         
         for t, a in agents_actions:
             
@@ -106,14 +123,15 @@ class TankDuelEnv(object):
                 if dist <= self.RANGE and abs(delta) < math.pi and abs(dist*delta) <= self.HIT_SIGMA:
                     print "hit: alpha=", alpha, "  phi+theta:", t.phi + t.theta, "  delta:", delta, "  dist:", dist
                     other.killed = True
-                    other.reward = -1.0
-                    t.reward = 1.0
+                    other.reward += -5.0
+                    t.reward += 5.0
                 else:
-                    t.reward = -0.01
+                    t.reward += -0.001
                     
             elif a in (2,3,4):
-                dcenter = t.xy - self.SIZE/2
-                dist_from_center0 = math.sqrt(np.sum(dcenter**2))
+                # move
+                #dcenter = t.xy - self.SIZE/2
+                #dist_from_center0 = math.sqrt(np.sum(dcenter**2))
                 dist = (0.2, 1.2, -0.2)[a-2]
                 dx = dist*math.cos(t.phi)
                 dy = dist*math.sin(t.phi)
@@ -121,52 +139,48 @@ class TankDuelEnv(object):
                             t.xy[1] + dy < self.SIZE and t.xy[1] + dy > 0.0:
                     t.xy[0] += dx
                     t.xy[1] += dy
-                    dcenter = t.xy - self.SIZE/2
-                    dist_from_center1 = math.sqrt(np.sum(dcenter**2))
-                    t.reward = (dist_from_center0-dist_from_center1)/10.0
+                    #dcenter = t.xy - self.SIZE/2
+                    #dist_from_center1 = math.sqrt(np.sum(dcenter**2))
+                    #t.reward += (dist_from_center0-dist_from_center1)/10.0
                     #print "reward:", t.reward
                 
             elif a in (5,6,7,8):
                 # turn
-                t.phi += (-5,-1,1,5)[a-5]*self.TURN
+                t.phi = angle_in_range(t.phi + (-5,-1,1,5)[a-5]*self.TURN)
             elif a in (9,10,11,12):
                 # turret turn
-                t.theta += (-10,-2,2,10)[a-9]*self.TURRET_TURN
+                t.theta = angle_in_range(t.theta + (-10,-2,2,10)[a-9]*self.TURRET_TURN)
+            #print a, t.reward
+                
+        return [(agent, {}) for agent, action in agents_actions]
                 
     def feedback(self, agents):
         if not  isinstance(agents, list):
             agents = [agents]
         out = []
-        nalive = sum([1 for t in self.Tanks if not t.killed], 0)
         self.T -= 1
-        game_over = nalive <= 1 or self.T <= 0
-        for t in agents:
-            reward = t.reward
-            t.reward = 0.0
-            done = game_over or t.killed
-            out.append((t, reward, done, {}))
-        return out
+        return [(t, t.reward, {}) for t in agents]
         
     
     SCALE = VIEWPORT/SIZE
         
     BodyPoly = [
-        (-10, -6),
-        (10, -6),
-        (10, 6),
-        (-10, 6)
+        (-12, -6),
+        (8, -6),
+        (8, 6),
+        (-12, 6)
     ]
     
-    BodyColor = (0.0, 0.4, 0.1)
+    BodyColor = (0.2, 0.8, 0.4)
     
     TowerPoly = [
-        (-5,-4),
-        (4,-4),
-        (4,4),
-        (-4,4)
+        (-5,-5),
+        (4,-3),
+        (4,3),
+        (-5,5)
     ]
     
-    TowerColor = (0.0, 0.1, 0.4)
+    TowerColor = (0.1, 0.4, 0.2)
     
     CannonPoly = [
         (3,-1),
@@ -175,16 +189,16 @@ class TankDuelEnv(object):
         (3,1)
     ]
     
-    CannonColor = (0.0, 0.0, 0.0)
+    CannonColor = (0.1, 0.4, 0.2)
     
     FirePoly = [
-        (17, -1),
-        (17+RANGE*SCALE, -1),
-        (17+RANGE*SCALE, 1),
-        (17, 1)
+        (17, -0.5),
+        (17+RANGE*SCALE, -3),
+        (17+RANGE*SCALE, 3),
+        (17, 0.5)
     ]
     
-    FireColor = (1.0, 0.8, 0.4)
+    FireColor = (1.0, 0.2, 0.)
     
     def shift_rotate(self, poly, angle, move):
         rotation = np.array([
@@ -204,7 +218,7 @@ class TankDuelEnv(object):
                     color=self.TowerColor)
             self.Viewer.draw_polygon(self.shift_rotate(self.CannonPoly, t.phi+t.theta, t.xy),
                     color=self.CannonColor)
-            if self.Actions[id(t)] == self.FIRE_ACTION:
+            if self.Actions.get(id(t)) == self.FIRE_ACTION:
                 self.Viewer.draw_polygon(self.shift_rotate(self.FirePoly, t.phi+t.theta, t.xy),
                     color = self.FireColor)
         self.Viewer.render()

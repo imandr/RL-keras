@@ -28,6 +28,7 @@ class Agent:
         self.Valids0 = self.Valids1
         self.Observation1 = observation
         self.Valids1 = valid_actions
+        self.QVector = qvector
         return policy(qvector(observation))
                 
     def learn(self, action, reward):
@@ -47,10 +48,10 @@ class Agent:
 
 class Env:
     
-    def reset(self, agents):
+    def reset(self, agents, random = False):
         pass
         
-    def addAgent(self, agent):
+    def addAgent(self, agent, random = False):
         pass
             
     def observe(self, agents):

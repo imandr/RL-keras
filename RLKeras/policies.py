@@ -11,7 +11,11 @@ class GreedyEpsPolicy:
         if random.random() < self.Epsilon:
             return random.choice(valids)
         else:
+            #return np.argmax(qs)
             return valids[np.argmax(qs[valids])]
+            
+    def __str__(self):
+        return "GreedyEpsPolicy(%f)" % (self.Epsilon,)
             
     __call__ = choose
     
@@ -22,9 +26,11 @@ class BoltzmannQPolicy:
     an action selected randomly according to this law.
     """
     def __init__(self, tau=1., clip=(-500., 500.)):
-        super(BoltzmannQPolicy, self).__init__()
         self.tau = tau
         self.clip = clip
+
+    def __str__(self):
+        return "BoltzmannQPolicy(%f)" % (self.tau,)
 
     def select_action(self, q_values, valids):
         """Return the selected action
@@ -36,9 +42,12 @@ class BoltzmannQPolicy:
             Selection action
         """
         assert q_values.ndim == 1
+        if self.tau <= 0.0:
+            return valids[np.argmax(q_values[valids])]
         q_values = q_values.astype('float64')[valids]
+        q_values -= np.max(q_values)
 
-        exp_values = np.exp(np.clip(q_values / self.tau, self.clip[0], self.clip[1]))
+        exp_values = np.exp(q_values / self.tau)
         probs = exp_values / np.sum(exp_values)
         action = np.random.choice(valids, p=probs)
         return action

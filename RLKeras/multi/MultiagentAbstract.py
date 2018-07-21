@@ -48,6 +48,9 @@ class Agent:
 
 class Env:
     
+    def over(self):
+        return True if over else False
+    
     def reset(self, agents):
         pass
         

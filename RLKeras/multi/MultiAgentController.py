@@ -1,4 +1,6 @@
 from ..callbacks import CallbackList
+import random
+
 class MultiAgentController:
     
     def __init__(self, env, agents, callbacks = None,
@@ -13,6 +15,10 @@ class MultiAgentController:
         
         self.EpisodesToTrain = episodes_between_train
         self.RoundsToTrain = episodes_between_train
+        
+        self.TotalTrainSteps = 0
+        self.TotalTrainRounds = 0
+        self.TotalTrainEpisodes = 0
         
     
     def fit(self, max_episodes = None, max_rounds = None, max_steps = None, callbacks = None, policy=None):
@@ -30,6 +36,29 @@ class MultiAgentController:
 
 class SynchronousMultiAgentController(MultiAgentController):
     
+    def randomMoves(self, env, agents, max_rounds, callbacks = []):
+        callbacks = CallbackList(callbacks)
+        callbacks._set_env(env)
+        self.Callbacks = callbacks
+        for sample in xrange(max_rounds):
+            env.reset(agents, random=True)
+            observations = env.observe(agents)
+            actions = []
+            active_agents = []
+            for agent, observation, valids, done, info in observations:
+                if done:
+                    agent.final(observation, True)
+                else:
+                    agent.action(observation, valids, True)
+                    actions.append((agent, random.choice(valids)))
+                    active_agents.append(agent)
+            env.step(actions)
+            feedback = env.feedback(active_agents)
+            for i, (agent, reward, info) in enumerate(feedback):
+                agent.learn(actions[i][1], reward)
+            self.RoundsToTrain -= 1
+            self.trainIfNeeded(agents)
+    
     def run(self, env, agents, max_episodes, max_rounds, max_steps, callbacks, training, policy):
         
         callbacks = callbacks or []
@@ -45,8 +74,20 @@ class SynchronousMultiAgentController(MultiAgentController):
         nrounds = 0
         nsteps = 0
         
-        while (max_episodes is None or nepisodes < max_episodes) and \
-                    (max_steps is None or nsteps < max_steps):
+        callbacks.on_run_begin(None,
+            dict(
+                training=training,
+                agents=agents,
+                max_episodes=max_episodes,
+                max_rounds=max_rounds,
+                max_steps=max_steps,
+                policy=policy
+                )
+        )
+        
+        run_rewards = {id(a):0.0 for a in agents}
+        
+        while (max_episodes is None or nepisodes < max_episodes) and (max_steps is None or nsteps < max_steps):
                     
             for a in agents:
                 a.episodeBegin()        # <-----
@@ -67,7 +108,7 @@ class SynchronousMultiAgentController(MultiAgentController):
             #print "episode begin: active_agents:", len(active_agents)
             #print agents[0].Done
 
-            while active_agents:
+            while active_agents:    # and not env.over():
                 
                 callbacks.on_round_begin(episode_round, {
                     'episode': nepisodes,
@@ -97,11 +138,15 @@ class SynchronousMultiAgentController(MultiAgentController):
                 
                     feedback = env.feedback(active_agents)
                     
+                    if training:
+                        self.TotalTrainSteps += len(actions_list)
+
                     for agent, reward, info in feedback:
                         episode_rewards[id(agent)] += reward
                 
                     callbacks.on_action_end(actions_list, 
                         {
+                            'qvectors': [(agent, agent.QVector) for agent in active_agents],
                             'observations': observations_list,
                             'actions': actions_list,
                             'feedback': feedback
@@ -121,9 +166,15 @@ class SynchronousMultiAgentController(MultiAgentController):
                     'active_agents': active_agents,
                     'actions': actions_list,
                     'feedback': feedback,
+                    'total_train_steps': self.TotalTrainSteps,
+                    'total_train_rounds': self.TotalTrainRounds,
+                    'total_train_episodes': self.TotalTrainEpisodes,
                 }
                 callbacks.on_step_end(episode_step, step_logs)
 
+
+                if training:
+                    self.TotalTrainRounds += 1
 
                 episode_round += 1
                 episode_step += 1
@@ -137,16 +188,39 @@ class SynchronousMultiAgentController(MultiAgentController):
                 'nrounds': nrounds,
                 'agents': agents,
                 'episode_rewards': [(agent, episode_rewards[id(agent)]) for agent in agents],
-                'nsteps': nsteps
+                'nsteps': nsteps,
+                'total_train_steps': self.TotalTrainSteps,
+                'total_train_rounds': self.TotalTrainRounds,
+                'total_train_episodes': self.TotalTrainEpisodes,
             })
             
+            for aid, r in episode_rewards.items():
+                run_rewards[aid] += r
+                
+            
             nepisodes += 1
+            if training:
+                self.TotalTrainEpisodes += 1
 
             self.EpisodesToTrain -= 1
             if training:    self.trainIfNeeded(agents)
+
+        callbacks.on_run_end(None,            
+            dict(
+                nepisodes=nepisodes,
+                nrounds=nrounds,
+                nsteps=nsteps,
+                run_rewards = [(agent, run_rewards[id(agent)]) for agent in agents],
+                total_train_steps = self.TotalTrainSteps,
+                total_train_rounds = self.TotalTrainRounds,
+                total_train_episodes = self.TotalTrainEpisodes
+                )
+        )
+
     
     def trainIfNeeded(self, agents):
         if self.RoundsToTrain <= 0 or self.EpisodesToTrain <= 0:
+            #print "train all brains...", self.RoundsToTrain, self.EpisodesToTrain
             for a in agents:
                 a.trainBrain(self.Callbacks)
             self.RoundsToTrain = self.RoundsBetweenTrain

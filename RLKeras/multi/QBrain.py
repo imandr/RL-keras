@@ -1,13 +1,18 @@
 from ..Memory import ReplayMemory
-from ..QNet import QNet
+from ..QNet import DifferentialQNet, DualQNet
 import numpy as np
 from ..tools import format_batch
 
 class QBrain:    
-    def __init__(self, model, gamma = 0.99, soft_update = None, memory_size = 100000):
-        self.QNet = QNet(model, soft_update = soft_update)
-        self.Memory = ReplayMemory(memory_size)
-        self.Gamma = gamma
+    def __init__(self, model, typ = "diff", gamma = 0.99, soft_update = None, memory_size = 100000,
+                    v_selectivity = True):
+        if typ == "diff":
+            self.QNet = DifferentialQNet(model, gamma = gamma)
+        elif typ == "dual":
+            self.QNet = DualQNet(model, gamma=gamma, soft_update=soft_update)
+        else:
+            raise ValueError("Unknown QNet type %s" % (typ,))
+        self.Memory = ReplayMemory(memory_size, v_selectivity=v_selectivity)
     
     @property
     def trainSamples(self):
@@ -17,13 +22,20 @@ class QBrain:
     def age(self):
         return self.Memory.Age
         
-    def memorize(self, tup):
+    def memorize(self, tup, w):
         #print "memorize(%s)" % (tup,)
-        self.Memory.add(tup)
+        self.Memory.add(tup, w)
 
-    def train(self, sample_size):
-        samples = self.Memory.sample(sample_size)
-        return self.QNet.train(samples, self.Gamma)
+    def train(self, sample_size, batch_size):
+        sample = self.Memory.sample(sample_size)
+        #print len(sample), batch_size
+        return self.QNet.train(sample, batch_size)
+        
+    def get_weights(self):
+        return self.QNet.get_weights()
+        
+    def mix_weights(self, weights, alpha):
+        self.QNet.mix_weights(weights, alpha)
         
     def update(self):
         self.QNet.update()
