@@ -93,6 +93,31 @@ class DualQNet(object):
         ]
         trainable.compile(optimizer=optimizer, loss=losses, metrics=metrics)
         self.TrainModel = trainable
+
+    def get_weights(self):
+        return (self.Model.get_weights(), self.TargetModel.get_weights())
+        
+    def blend_weights(self, alpha, weights):
+        
+        mw, tw = weights
+        
+        my_mw, my_tw = self.Model.get_weights(), self.TargetModel.get_weights()
+        
+        assert len(mw) == len(my_mw)
+        for my_w, x_w in zip(my_mw, mv):
+            my_w.flat[:] = my_w.flat + alpha*(x_w.flat-my_w.flat)
+
+        assert len(tw) == len(my_tw)
+        for my_w, x_w in zip(my_tw, tv):
+            my_w.flat[:] = my_w.flat + alpha*(x_w.flat-my_w.flat)
+
+        self.set_weights((my_mw, my_tw))
+        
+    def set_weights(self, weights):
+        mw, tw = weights
+        self.Model.set_weights(mw)
+        self.TargetModel.set_weights(tw)
+
         
     def compute(self, batch):
         return self.Model.predict_on_batch(batch)
@@ -204,21 +229,30 @@ class DifferentialQNet(object):
     def get_weights(self):
         return self.Model.get_weights()
         
-    def mix_weights(self, weights, alpha):
-        my_weights = self.Model.get_weights()
+    def set_weights(self, weights):
+        self.Model.set_weights(weights)
+
+    def blend_weights(self, alpha, weights):
+        my_weights = self.get_weights()
+        x = my_weights[0].flat[0]
         assert len(weights) == len(my_weights)
         for my_w, w in zip(my_weights, weights):
-            my_w.flat[:] = my_w.flat*(1-alpha)+w.flat*alpha
-        self.Model.set_weights(my_weights)
+            #print "blend_weights:", my_w.flat[:5], w.flat[:5]
+            my_w.flat[:] = (my_w + alpha*(w-my_w)).flat
+            #print my_w.flat[:10]
+        self.set_weights(my_weights)
+        #print "blend_weights:", x, "->", my_weights[0].flat[0], "->", self.Model.get_weights()[0].flat[0]
+        
+        
 
     def compile(self, optimizer, metrics=[]):
         
         self.Model.compile(optimizer='sgd', loss='mse')
         
         x_shape = self.Model.inputs[0].shape[1:]
-        print "x_shape=", x_shape
+        #print "x_shape=", x_shape
         q_shape = self.Model.output.shape[1:]
-        print "q_shape=", q_shape
+        #print "q_shape=", q_shape
         x0 = Input(name="observation0", shape=x_shape)
         q0 = self.Model(x0)
         x1 = Input(name="observation1", shape=x_shape)
@@ -228,18 +262,9 @@ class DifferentialQNet(object):
         
         def differential(args):
             q0, q1, final, mask = args
-            #final_expanded = K.expand_dims(final, 1)
-            #print "q0 shape:", q0.shape
-            #print "q1 shape:", q1.shape
-            #print "mask shape:", mask.shape
-            #print "final shape:", final.shape
             q0 = K.sum(q0*mask, axis=-1)[:,None]
-            #print "q0.shape=", q0.shape
             q1max = K.max(q1, axis=-1)[:,None]
-            print "q1max.shape=", q1max.shape
             diff = q0 - (1.0-final) * self.Gamma * q1max
-            #print "diff.shape=",diff.shape
-            #print diff.shape
             return diff
             
         reward = Lambda(differential, name="reward")([q0, q1, final, mask])
@@ -270,51 +295,28 @@ class DifferentialQNet(object):
             batches = zip(*sample[j:j+batch_size])
             batch_len = len(batches[0])
         
-            #print "samples:"
-            #for s in samples:
-            #    print s
-        
             state0_batch = format_batch(batches[0])
             action_batch = np.array(batches[1])
-            reward_batch = np.array(batches[2]).reshape((-1,1))
+            reward_batch = np.array(batches[2])
             state1_batch = format_batch(np.array(batches[3]))
             final_state1_batch = batches[4]
-            #print "training: max reward=",max(reward_batch)
-            #print final_state1_batch
-        
-            #valid_actions_batch = np.array(batches[5])
-            #infos = batches[6]
-            finals = np.zeros((batch_len, 1), dtype=np.float32)
+
+            finals = np.asarray(final_state1_batch, dtype=np.int8).reshape((-1,1))
+            inx_range = np.arange(batch_len, dtype=np.int32)
             masks = np.zeros((batch_len, self.NActions), dtype=np.float32)
-            for mask, action, final, is_final in zip(masks, action_batch, finals, final_state1_batch):
-                mask[action] = 1.  # enable loss for this specific action
-                final[:] = is_final # ? 1.0 else 0.0
-            #print "train: target=", targets, "  dummy_targets=", dummy_targets
-
-            #print "train: masks:", masks
-            #print "train: finals:", finals
-
-            #print final_state1_batch.shape
+            masks[inx_range, action_batch] = 1.0
+            rewards = reward_batch.reshape((-1,1))
         
             t0 = time.time()
-        
-            #print "state0_batch:", state0_batch
-            #print "state1_batch:", state1_batch
-            #print "finals:", finals
-            #print "masks:", masks
-            #print "rewards:", reward_batch
             
+            #print finals.shape
+        
             metrics = self.TrainModel.train_on_batch(
                 [state0_batch, state1_batch, finals, masks], 
-                reward_batch)
-            #print "batch sizes:", len(state0_batch), len(state1_batch), len(reward_batch), len(state0_batch), \
-            #    len(final_state1_batch),  len(masks), len(dummy_targets)
-            #print "train time:", time.time() - t0
-            #print "-- metrics --"
-            #for idx, (mn, m) in enumerate(zip(metrics_names, metrics)):
-            #    print "%d: %s = %s" % (idx, mn, m)
+                rewards)
             self.TrainSamples += batch_len
         return metrics[0]
         
     def update(self):
         pass
+        

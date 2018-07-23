@@ -57,6 +57,8 @@ class MultiDQNAgent:
         self.Reward0 = self.Reward1
         self.Reward1 = reward
         if self.Observation0 is not None:
+            if self.Reward0 is None:
+                raise ValueError("action0, action1, reward0, reward1=%s,%s,%s,%s" % (self.Action0, self.Action1, self.Reward0, self.Reward1))
             self.Brain.memorize((self.Observation0, self.Action0, self.Reward0, 
                 self.Observation1, False, self.Valids1), self.Reward0)    
 
@@ -100,9 +102,15 @@ class MultiDQNAgent:
         return metrics
 
             
-    # overridables
     def episodeBegin(self):
-        pass
+        self.Valids1 = None
+        self.Action0 = None
+        self.Action1 = None
+        self.Reward0 = None
+        self.Reward1 = None
+        self.Done = False
+        self.Observation0 = None
+        self.Observation1 = None
         
     def episodeEnd(self, observation):
         pass

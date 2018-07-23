@@ -1,6 +1,7 @@
 import random, math, time
 import numpy as np
 from gym.envs.classic_control import rendering
+#import pyglet
 
 class Space:
     def __init__(self, shape):
@@ -78,6 +79,9 @@ class TankTargetEnv(object):
         self.Tanks = []
         self.Actions = {}
         self.Viewer = rendering.Viewer(self.VIEWPORT, self.VIEWPORT)
+        #w=self.Viewer.window
+        #cfg = pyglet.gl.Config(accum_red_size=8, accum_green_size=8, accum_blue_size=8)
+        
         self.observation_space = Space((8,))
         self.action_space = Space((self.NACTIONS,))
         self.Target = None

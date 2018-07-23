@@ -1,10 +1,10 @@
-from ..Memory import ReplayMemory
-from ..QNet import DifferentialQNet, DualQNet
+from .Memory import ReplayMemory
+from .QNet import DifferentialQNet, DualQNet
 import numpy as np
-from ..tools import format_batch
+from .tools import format_batch
 
 class QBrain:    
-    def __init__(self, model, typ = "diff", gamma = 0.99, soft_update = None, memory_size = 100000,
+    def __init__(self, model, typ = "diff", gamma = 0.99, soft_update = None, memory = None, memory_size = 100000,
                     v_selectivity = True):
         if typ == "diff":
             self.QNet = DifferentialQNet(model, gamma = gamma)
@@ -12,7 +12,7 @@ class QBrain:
             self.QNet = DualQNet(model, gamma=gamma, soft_update=soft_update)
         else:
             raise ValueError("Unknown QNet type %s" % (typ,))
-        self.Memory = ReplayMemory(memory_size, v_selectivity=v_selectivity)
+        self.Memory = memory or ReplayMemory(memory_size, v_selectivity=v_selectivity)
     
     @property
     def trainSamples(self):
@@ -34,8 +34,18 @@ class QBrain:
     def get_weights(self):
         return self.QNet.get_weights()
         
-    def mix_weights(self, weights, alpha):
-        self.QNet.mix_weights(weights, alpha)
+    def blend_weights(self, alpha, weights):
+        self.QNet.blend_weights(alpha, weights)
+        
+    def set_weights(self, weights):
+        self.QNet.set_weights(weights)
+        
+    def blend(self, alpha, other):
+        w = other.get_weights()
+        self.blend_weights(alpha, w)
+        
+    def transfer(self, other):
+        self.set_weights(other.get_weights())
         
     def update(self):
         self.QNet.update()
