@@ -17,35 +17,30 @@ class TankDuelEnv(object):
     
     SIZE = 100.0
     SPEED = 2.0
-    RANGE = 50.0
-    HIT_SIGMA = 3.0
+    RANGE = 30.0
+    HIT_SIGMA = 2.0
     TURN = 1.0*math.pi/180      
     TURRET_TURN = 1.0*math.pi/180   
     
-    NACTIONS = 13   # noop, fire, 
-                    # forward slow, forward fast, reverse, 
+    NACTIONS = 8   # noop, fire, 
+                    # forward slow, forward fast, 
                     # turn left fast, turn left slow, turn right slow, turn right fast, 
-                    # turret left slow, turret left fast,
-                    # turret right slow, turret right fast, 
                     
     ALL_ACTIONS = range(NACTIONS)
     FIRE_ACTION = 1
     
     VIEWPORT = 600
     FPS = 100.0
-    TMAX = 1000
+    TMAX = 500.0
     
     def __init__(self):
         self.Tanks = []
         self.Actions = {}
         self.Viewer = rendering.Viewer(self.VIEWPORT, self.VIEWPORT)
-        self.observation_space = Space((10,))
-        self.actions_space = Space((self.NACTIONS,))
+        self.observation_space = Space((11,))
+        self.action_space = Space((self.NACTIONS,))
         self.T = self.TMAX
         
-    def over(self):
-        return self.T <= 0
-
     def reset(self, tanks):
         assert len(tanks) == 2
         self.Tanks = []
@@ -63,11 +58,14 @@ class TankDuelEnv(object):
         out = []
 
         nalive = sum([1 for t in self.Tanks if not t.killed], 0)
-        game_over = nalive <= 1
+        game_over = nalive <= 1 or self.T <= 0
 
         for i, t in enumerate(self.Tanks):
             t1 = self.Tanks[1-i]
             dxy = t1.xy - t.xy
+            
+            alpha = math.atan2(dxy[1], dxy[0])
+            dist = math.sqrt(np.sum(dxy**2))
             
             observation = np.array([
                 # self position relative to edges
@@ -79,11 +77,12 @@ class TankDuelEnv(object):
                 t.phi/math.pi,
                 t.theta/math.pi,
                 # the other tank position
-                dxy[0]/self.RANGE,
-                dxy[1]/self.RANGE,
+                dist/self.RANGE,
+                alpha/math.pi,
                 # the other tank angles
                 t1.phi/math.pi,
-                t1.theta/math.pi
+                t1.theta/math.pi,
+                self.T/self.TMAX
             ])
             
             if i == 0:
@@ -97,17 +96,11 @@ class TankDuelEnv(object):
             
         for t in self.Tanks:
             t.reward = 0.0
-        
+
+        # all fire actions first
         for t, a in agents_actions:
-            
-            if t.killed:    continue
-            
             self.Actions[id(t)] = a    # for rendering
-            
-            
-            if a == 0:      # noop
-                pass
-            elif a == self.FIRE_ACTION:    # fire
+            if a == self.FIRE_ACTION:    # fire
                 # find the other tank
                 other = None
                 for t1 in self.Tanks:
@@ -116,41 +109,40 @@ class TankDuelEnv(object):
                         break
                 dxy = other.xy - t.xy
                 alpha = math.atan2(dxy[1], dxy[0])
-                delta = alpha - t.phi - t.theta
-                while delta > math.pi: delta -= math.pi*2
-                while delta < -math.pi: delta += math.pi*2
+                delta = angle_in_range(alpha - t.phi - t.theta)
                 dist = math.sqrt(np.sum(dxy*dxy))
-                if dist <= self.RANGE and abs(delta) < math.pi and abs(dist*delta) <= self.HIT_SIGMA:
-                    print "hit: alpha=", alpha, "  phi+theta:", t.phi + t.theta, "  delta:", delta, "  dist:", dist
+                if dist <= self.RANGE and abs(delta) < math.pi/2 and abs(dist*delta) <= self.HIT_SIGMA:
+                    print "===> hit: alpha=", alpha, "  phi+theta:", t.phi + t.theta, "  delta:", delta, "  dist:", dist
                     other.killed = True
                     other.reward += -5.0
                     t.reward += 5.0
                 else:
-                    t.reward += -0.001
+                    t.reward += -0.01
+        
+        
+        for t, a in agents_actions:
+            
+            if t.killed or a == 0 or a == self.FIRE_ACTION:      # noop
+                pass
                     
-            elif a in (2,3,4):
+            elif a in (2,3):
                 # move
                 #dcenter = t.xy - self.SIZE/2
                 #dist_from_center0 = math.sqrt(np.sum(dcenter**2))
-                dist = (0.2, 1.2, -0.2)[a-2]
+                dist = (0.2, 1.2)[a-2]
                 dx = dist*math.cos(t.phi)
                 dy = dist*math.sin(t.phi)
-                if t.xy[0] + dx < self.SIZE and t.xy[0] + dx > 0.0 and \
-                            t.xy[1] + dy < self.SIZE and t.xy[1] + dy > 0.0:
-                    t.xy[0] += dx
-                    t.xy[1] += dy
-                    #dcenter = t.xy - self.SIZE/2
-                    #dist_from_center1 = math.sqrt(np.sum(dcenter**2))
-                    #t.reward += (dist_from_center0-dist_from_center1)/10.0
-                    #print "reward:", t.reward
+                t.xy[0] += dx
+                t.xy[1] += dy
+                if t.xy[0] < 0.0 or t.xy[0] > self.SIZE or \
+                        t.xy[1] < 0.0 or t.xy[1] > self.SIZE:
+                    t.reward -= 5.0
+                    t.killed = True
                 
-            elif a in (5,6,7,8):
+                
+            elif a in (4,5,6,7):
                 # turn
-                t.phi = angle_in_range(t.phi + (-5,-1,1,5)[a-5]*self.TURN)
-            elif a in (9,10,11,12):
-                # turret turn
-                t.theta = angle_in_range(t.theta + (-10,-2,2,10)[a-9]*self.TURRET_TURN)
-            #print a, t.reward
+                t.phi = angle_in_range(t.phi + (-5,-1,1,5)[a-4]*self.TURN)
                 
         return [(agent, {}) for agent, action in agents_actions]
                 
@@ -189,12 +181,14 @@ class TankDuelEnv(object):
         (3,1)
     ]
     
+    DeadColor = (0.5, 0.1, 0.1)
+    
     CannonColor = (0.1, 0.4, 0.2)
     
     FirePoly = [
         (17, -0.5),
-        (17+RANGE*SCALE, -3),
-        (17+RANGE*SCALE, 3),
+        (RANGE*SCALE, -0.5),
+        (RANGE*SCALE, 0.5),
         (17, 0.5)
     ]
     
@@ -211,18 +205,23 @@ class TankDuelEnv(object):
     def render(self, mode="human"):
         t0 = time.time()
         t1 = t0 + 1.0/self.FPS
-        
+        killed = False
         for t in self.Tanks:
-            self.Viewer.draw_polygon(self.shift_rotate(self.BodyPoly, t.phi, t.xy), color=self.BodyColor)
+            self.Viewer.draw_polygon(self.shift_rotate(self.BodyPoly, t.phi, t.xy), 
+                color=self.DeadColor if t.killed else self.BodyColor)
             self.Viewer.draw_polygon(self.shift_rotate(self.TowerPoly, t.phi+t.theta, t.xy), 
-                    color=self.TowerColor)
+                    color=self.DeadColor if t.killed else self.TowerColor)
             self.Viewer.draw_polygon(self.shift_rotate(self.CannonPoly, t.phi+t.theta, t.xy),
-                    color=self.CannonColor)
+                    color=self.DeadColor if t.killed else self.CannonColor)
             if self.Actions.get(id(t)) == self.FIRE_ACTION:
                 self.Viewer.draw_polygon(self.shift_rotate(self.FirePoly, t.phi+t.theta, t.xy),
                     color = self.FireColor)
+            killed = killed or t.killed
         self.Viewer.render()
-        time.sleep(max(0, t1 - time.time()))
+        if killed:
+            time.sleep(1.0)
+        else:
+            time.sleep(max(0, t1 - time.time()))
         
             
 if __name__=='__main__':

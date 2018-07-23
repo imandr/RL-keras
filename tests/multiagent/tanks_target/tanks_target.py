@@ -92,7 +92,7 @@ class EpisodeLogger(Callback):
 
 env = TankTargetEnv()
 model = create_model(env.observation_space.shape[-1], env.action_space.shape[-1])
-brain = QBrain(model, typ="diff", v_selectivity=False, soft_update=0.01, gamma=0.99)
+brain = QBrain(model, typ="diff", v_selectivity=True, soft_update=0.01, gamma=0.99)
 brain.compile(Adam(lr=1e-3), ["mse"])
 
 tanks = [TankAgent(env, brain, train_sample_size=1000) for _ in range(1)]
@@ -102,8 +102,6 @@ controller = SynchronousMultiAgentController(env, tanks,
     rounds_between_train = 10000, episodes_between_train = 1
     )
 
-epsilons = [0.1, 0.2, 0.01, 0.5]
-nepsilons = len(epsilons)
 taus = [0.01, 0.1, 1.0, 2.0]
 ntaus = len(taus)
 t = 0
@@ -116,11 +114,10 @@ for _ in range(20000):
     for i in range(2*ntaus):
         t += 1
         tau = taus[t%ntaus]
-        print "Tau:", tau
         policy = BoltzmannQPolicy(tau)
-        print "training..."
+        print "Tau=%f, training..." % (tau,)
         controller.fit(max_episodes=10, callbacks=[RunLogger()], policy=policy)
-    print "testing..."
+    print "-- Testing..."
     controller.test(max_episodes=50, callbacks=[test_run_logger], policy=test_policy)
     controller.test(max_episodes=3, callbacks=[Visualizer(), EpisodeLogger()], policy=test_policy)
     
