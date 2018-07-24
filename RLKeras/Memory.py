@@ -5,7 +5,7 @@ class ReplayMemory:
     
     M = 1
     
-    def __init__(self, size, v_selectivity = True):
+    def __init__(self, size, v_selectivity = True, bypass_short_term = True):
         self.MaxSize = size
         self.HighWater = int(size*1.3)
         self.Memory = []
@@ -16,6 +16,7 @@ class ReplayMemory:
         self.MeanW = 0.0
         self.Alpha = 0.01
         self.VSel = v_selectivity
+        self.BypassShortTerm = bypass_short_term
         
     def makeHashable(self, tup):
         return tuple([x if not isinstance(x, (list, np.ndarray)) else tuple(x) for x in tup])
@@ -29,7 +30,10 @@ class ReplayMemory:
             key = self.makeHashable(tup)
             #print key
             if not key in self.Known:
-                self.ShortTermMemory.append(tup)
+                if self.BypassShortTerm:
+                    self.add_to_long([tup])
+                else:
+                    self.ShortTermMemory.append(tup)
                 #print tup
                 self.Known.add(key)
                 self.Age += 1

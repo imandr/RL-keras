@@ -4,7 +4,7 @@ from keras.layers import Lambda, Input, Layer, Dense
 import keras.backend as K
 from keras import optimizers
 from tools import best_valid_action, format_batch
-import time
+import time, math
 
 def clone_model(model, custom_objects={}):
     # Requires Keras 1.0.7 since get_config has breaking changes.
@@ -243,8 +243,6 @@ class DifferentialQNet(object):
         self.set_weights(my_weights)
         #print "blend_weights:", x, "->", my_weights[0].flat[0], "->", self.Model.get_weights()[0].flat[0]
         
-        
-
     def compile(self, optimizer, metrics=[]):
         
         self.Model.compile(optimizer='sgd', loss='mse')

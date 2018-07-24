@@ -2,8 +2,8 @@ from keras.models import Model
 from keras.layers import Dense, Activation, Flatten, Input
 from keras.optimizers import Adam, Adagrad
 
-from RLKeras import QNet
-from RLKeras.multi import MultiDQNAgent, SynchronousMultiAgentController, QBrain
+from RLKeras import QNet, QBrain
+from RLKeras.multi import MultiDQNAgent, SynchronousMultiAgentController
 from RLKeras.callbacks import Callback, Visualizer
 from RLKeras.policies import GreedyEpsPolicy, BoltzmannQPolicy
 
@@ -27,10 +27,11 @@ def create_model(inp_width, out_width):
 class TankAgent(MultiDQNAgent):
     pass
 
-class TrainCallback(Callback):
+class TrainRunLog(Callback):
     
     def on_train_session_end(self, nsessions, logs):
-        print "Train session %d: loss=%f" % (nsessions, math.sqrt(logs["metrics"]))
+        pass
+        
         
     def on_qnet_update(self, nupdates, logs):
         #print "QNet updated"
@@ -38,29 +39,44 @@ class TrainCallback(Callback):
         
 class RunLogger(Callback):
     
-    def __init__(self, csv_out = None):
+    def __init__(self, csv_out = None, loss_info_from = None):
         if isinstance(csv_out, str):
             csv_out = open(csv_out, "w")
         if csv_out is not None:
-            csv_out.write("episodes,rounds,steps,reward_per_episode\n")
+            csv_out.write("episodes,rounds,steps,reward_per_episode,loss_ma\n")
         self.CSVOut = csv_out
+        self.LossMA = None
+        self.LossInfoFrom = loss_info_from
+        
+        
+    def on_train_session_end(self, nsessions, logs):
+        if logs["mean_metrics"] is not None: # training ?
+            loss = math.sqrt(logs["mean_metrics"])
+            if self.LossMA is None:
+                self.LossMA = loss
+            self.LossMA += 0.1 * (loss-self.LossMA)
     
     def on_run_end(self, param, logs={}):
         rewards = logs["run_rewards"]
         nagents = len(rewards)
         nepisodes = logs["nepisodes"]
         avg_reward = float(sum([r for t, r in rewards]))/nepisodes/nagents
+        loss_ma = self.LossMA
+        if self.LossInfoFrom is not None:
+            loss_ma = self.LossInfoFrom.LossMA
         print "Train episodes/rounds/steps:", \
             logs["total_train_episodes"], \
             logs["total_train_rounds"], \
             logs["total_train_steps"], \
-        "Session reward per episode = ", avg_reward
+            "  Loss MA:%.6f" % (loss_ma,), \
+            "  Session reward per episode:", avg_reward
         if self.CSVOut is not None:
-            self.CSVOut.write("%d,%d,%d,%f\n" % ( 
+            self.CSVOut.write("%d,%d,%d,%f,%f\n" % ( 
                     logs["total_train_episodes"],
                     logs["total_train_rounds"],
                     logs["total_train_steps"],
-                    avg_reward
+                    avg_reward, 
+                    loss_ma if loss_ma is not None else -1.0
                 )
             )
             self.CSVOut.flush()
@@ -92,7 +108,7 @@ class EpisodeLogger(Callback):
 
 env = TankTargetEnv()
 model = create_model(env.observation_space.shape[-1], env.action_space.shape[-1])
-brain = QBrain(model, typ="diff", v_selectivity=True, soft_update=0.01, gamma=0.99)
+brain = QBrain(model, typ="diff", v_selectivity=False, soft_update=0.01, gamma=0.99, bypass_short_term=True)
 brain.compile(Adam(lr=1e-3), ["mse"])
 
 tanks = [TankAgent(env, brain, train_sample_size=1000) for _ in range(1)]
@@ -108,7 +124,8 @@ t = 0
 
 test_policy = BoltzmannQPolicy(0.005)
 
-test_run_logger = RunLogger("run_log.csv")
+train_run_logger = RunLogger()
+test_run_logger = RunLogger("run_log.csv", loss_info_from=train_run_logger)
 
 for _ in range(20000):
     for i in range(2*ntaus):
@@ -116,7 +133,7 @@ for _ in range(20000):
         tau = taus[t%ntaus]
         policy = BoltzmannQPolicy(tau)
         print "Tau=%f, training..." % (tau,)
-        controller.fit(max_episodes=10, callbacks=[RunLogger()], policy=policy)
+        controller.fit(max_episodes=10, callbacks=[train_run_logger], policy=policy)
     print "-- Testing..."
     controller.test(max_episodes=50, callbacks=[test_run_logger], policy=test_policy)
     controller.test(max_episodes=3, callbacks=[Visualizer(), EpisodeLogger()], policy=test_policy)

@@ -3,12 +3,11 @@ import random
 
 class MultiAgentController:
     
-    def __init__(self, env, agents, callbacks = None,
+    def __init__(self, env, agents,
             episodes_between_train = 1, rounds_between_train = 100
         ):
         self.Env = env
         self.Agents = agents
-        self.Callbacks = callbacks
         
         self.EpisodesBetweenTrain = episodes_between_train
         self.RoundsBetweenTrain = rounds_between_train
@@ -24,12 +23,12 @@ class MultiAgentController:
     def fit(self, max_episodes = None, max_rounds = None, max_steps = None, callbacks = None, policy=None):
         #print "fit"
         return self.run(self.Env, self.Agents, max_episodes, max_rounds, max_steps, 
-            callbacks or self.Callbacks, True, policy)
+            callbacks, True, policy)
 
     def test(self, max_episodes = None, max_rounds = None, max_steps = None, callbacks = None, policy=None):
         #print "test"
         return self.run(self.Env, self.Agents, max_episodes, max_rounds, max_steps, 
-            callbacks or self.Callbacks, False, policy)
+            callbacks, False, policy)
     
     def run(self, env, agents, max_episodes, max_steps, callbacks, training, policy):
         raise NotImplementedError
@@ -39,7 +38,6 @@ class SynchronousMultiAgentController(MultiAgentController):
     def randomMoves(self, env, agents, max_rounds, callbacks = []):
         callbacks = CallbackList(callbacks)
         callbacks._set_env(env)
-        self.Callbacks = callbacks
         for sample in xrange(max_rounds):
             env.reset(agents, random=True)
             observations = env.observe(agents)
@@ -57,7 +55,7 @@ class SynchronousMultiAgentController(MultiAgentController):
             for i, (agent, reward, info) in enumerate(feedback):
                 agent.learn(actions[i][1], reward)
             self.RoundsToTrain -= 1
-            self.trainIfNeeded(agents)
+            self.trainIfNeeded(agents, callbacks)
     
     def run(self, env, agents, max_episodes, max_rounds, max_steps, callbacks, training, policy):
         
@@ -65,9 +63,7 @@ class SynchronousMultiAgentController(MultiAgentController):
         
         callbacks = CallbackList(callbacks)
         callbacks._set_env(env)
-        
-        self.Callbacks = callbacks
-        
+                
         assert max_episodes is not None or max_steps is not None
         
         nepisodes = 0
@@ -182,7 +178,7 @@ class SynchronousMultiAgentController(MultiAgentController):
                 nrounds += 1
                 
                 self.RoundsToTrain -= 1
-                if training:    self.trainIfNeeded(agents)
+                if training:    self.trainIfNeeded(agents, callbacks)
                 
             callbacks.on_episode_end(nepisodes, {
                 'nrounds': nrounds,
@@ -203,7 +199,7 @@ class SynchronousMultiAgentController(MultiAgentController):
                 self.TotalTrainEpisodes += 1
 
             self.EpisodesToTrain -= 1
-            if training:    self.trainIfNeeded(agents)
+            if training:    self.trainIfNeeded(agents, callbacks)
 
         callbacks.on_run_end(None,            
             dict(
@@ -218,11 +214,11 @@ class SynchronousMultiAgentController(MultiAgentController):
         )
 
     
-    def trainIfNeeded(self, agents):
+    def trainIfNeeded(self, agents, callbacks):
         if self.RoundsToTrain <= 0 or self.EpisodesToTrain <= 0:
             #print "train all brains...", self.RoundsToTrain, self.EpisodesToTrain
             for a in agents:
-                a.trainBrain(self.Callbacks)
+                a.trainBrain(callbacks)
             self.RoundsToTrain = self.RoundsBetweenTrain
             self.EpisodesToTrain = self.EpisodesBetweenTrain
 
@@ -235,8 +231,6 @@ class SequentialMultiAgentController(MultiAgentController):
         
         callbacks = CallbackList(callbacks)
         callbacks._set_env(env)
-        
-        self.Callbacks = callbacks
         
         assert max_episodes is not None or max_steps is not None
         

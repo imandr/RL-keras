@@ -90,7 +90,7 @@ class MemoryTransfer(Callback):
             print r, t.Brain.get_weights()[0].flat[:10]
         
         tworst.Brain.blend(self.Alpha, tbest.Brain)
-        tworst.Brain.blend(self.Alpha/2, tmid.Brain)
+        tworst.Brain.blend(self.Alpha/3, tmid.Brain)
 
         print "------ After brain transfer ------"
         for r, t in rewards_per_tank: 
@@ -121,7 +121,7 @@ class EpisodeLogger(Callback):
             (episode, logs["nrounds"], rewards, avq, self.Actions)
 
 env = TankTargetEnv()
-memory = ReplayMemory(100000, v_selectivity=False)
+memory = ReplayMemory(100000, v_selectivity=True)
 tanks = []
 
 for i in xrange(3):
@@ -146,32 +146,32 @@ test_policy = BoltzmannQPolicy(0.005)
 
 test_run_logger = RunLogger("run_log.csv")
 
-controller.test(max_episodes=1, callbacks=[Visualizer()], policy=test_policy)
-
-
 for _ in range(20000):
     for i in range(ntaus*2):
         t += 1
         tau = taus[t%ntaus]
         policy = BoltzmannQPolicy(tau)
-        print "Tau=%f, training..." % (tau,)
+        print "-- Training with tau=%f..." % (tau,)
         controller.fit(max_episodes=10, callbacks=[RunLogger()], policy=policy)
+    
     print "-- Testing..."
-    
-    r = random.randint(0, 1000000001)
-    random_state = random.getstate()
+    #r = random.randint(0, 1000000001)
+    #random_state = random.getstate()
+    #random.seed(r)
+    #np.random.seed(r)
 
-    random.seed(r)
-    np.random.seed(r)
     controller.test(max_episodes=50, callbacks=[test_run_logger, MemoryTransfer(0.5)], policy=test_policy)
+    #controller.test(max_episodes=50, callbacks=[test_run_logger], policy=test_policy)
     
-    random.seed(r)
-    np.random.seed(r)
-    controller.test(max_episodes=50, callbacks=[test_run_logger], policy=test_policy)
+    #print "-- Re-testing..."
+    #random.seed(r)
+    #np.random.seed(r)
+    #controller.test(max_episodes=50, callbacks=[RunLogger()], policy=test_policy)
 
+    print "-- Demo..."
     controller.test(max_episodes=3, callbacks=[Visualizer(), EpisodeLogger()], policy=test_policy)
-    random.setstate(random_state)
-    np.random.seed(random.randint(0, 1000000001))
+    #random.setstate(random_state)
+    #np.random.seed(random.randint(0, 1000000001))
     
     
 

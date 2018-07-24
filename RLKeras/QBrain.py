@@ -5,14 +5,14 @@ from .tools import format_batch
 
 class QBrain:    
     def __init__(self, model, typ = "diff", gamma = 0.99, soft_update = None, memory = None, memory_size = 100000,
-                    v_selectivity = True):
+                    v_selectivity = True, bypass_short_term = False):
         if typ == "diff":
             self.QNet = DifferentialQNet(model, gamma = gamma)
         elif typ == "dual":
             self.QNet = DualQNet(model, gamma=gamma, soft_update=soft_update)
         else:
             raise ValueError("Unknown QNet type %s" % (typ,))
-        self.Memory = memory or ReplayMemory(memory_size, v_selectivity=v_selectivity)
+        self.Memory = memory or ReplayMemory(memory_size, v_selectivity=v_selectivity, bypass_short_term=bypass_short_term)
     
     @property
     def trainSamples(self):

@@ -65,14 +65,18 @@ class MultiDQNAgent:
     def trainBrain(self, callbacks):
         metrics = None
         if self.Brain.recordSize() >= self.TrainBatchSize:
+            nmetrics = 0
+            summetrics = 0.0
             for train_round in xrange(self.TrainRoundsPerSession):
                 metrics = self.Brain.train(self.TrainSampleSize, self.TrainBatchSize)
-                self.LastMetrics = metrics
                 self.SamplesTrained += self.TrainSampleSize
                 self.BatchesTrained += 1
-                #print "metrics:"
-                #for m, mn in zip(metrics, metrics_names):
-                #    print "   %s: %s" % (mn, m)
+
+                nmetrics += 1
+                summetrics += metrics
+                
+                #print "metrics:", metrics
+                
                 if callbacks is not None:
                     callbacks.on_train_batch_end(self.BatchesTrained,
                         {
@@ -90,7 +94,7 @@ class MultiDQNAgent:
                     {
                         "train_sessions": self.SessionsTrained,
                         "train_samples": self.SamplesTrained,
-                        "metrics": metrics,
+                        "mean_metrics": None if nmetrics == 0 else summetrics/nmetrics,
                         "train_batches": self.BatchesTrained,
                         "memory_size": self.Brain.recordSize()
                     })

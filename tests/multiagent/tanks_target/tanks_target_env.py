@@ -129,7 +129,7 @@ class TankTargetEnv(object):
             agents_actions = [(agent, agents_actions)]
             
         for t in self.Tanks:
-            t.State.reward = -0.01
+            t.State.reward = 0.0
 
         if not self.Over:
 
@@ -137,11 +137,7 @@ class TankTargetEnv(object):
                 s = t.State
                 s.Hit = False
                 self.Actions[id(t)] = a    # for rendering
-                if False and s.last_fire and a == self.FIRE_ACTION:
-                    s.move(-0.1)
-                    s.last_fire = False
-                    self.Actions[id(t)] = -1    # for rendering
-                    continue
+
                 if a == 0:    # fire
                     # find the other tank
                     dist = s.targetDist(self.Target)
@@ -153,20 +149,14 @@ class TankTargetEnv(object):
                             print "=--> hit: alpha=", alpha, "  phi+theta:", s.phi + s.theta, "  delta:", delta, "  dist:", dist
                             s.Done = True
                             s.reward += 5.0
-                            s.Hit = True
-                            self.Over = True
+                            s.Hit = True        # for rendering
                     else:
                         s.reward += -0.02
-                    s.last_fire = True
                     
                 elif a in (1,2):
                     # move
                     dist = (0.2, 1.2)[a-1]
-                    d0 = s.targetDist(self.Target)
                     s.move(dist)
-                    #----
-                    d1 = s.targetDist(self.Target)
-                    #s.reward += (d0-d1)/self.RANGE
                 
                 elif a in (3,4,5,6):
                     # turn
@@ -235,6 +225,7 @@ class TankTargetEnv(object):
         for t in self.Tanks:
             if t.State.Hit:
                 hit = True
+                t.State.Hit = False
                 break
                 
         # draw the target
