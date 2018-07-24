@@ -1,14 +1,15 @@
 from .Memory import ReplayMemory
-from .QNet import DifferentialQNet, DualQNet
 import numpy as np
 from .tools import format_batch
 
 class QBrain:    
-    def __init__(self, model, typ = "diff", gamma = 0.99, soft_update = None, memory = None, memory_size = 100000,
+    def __init__(self, model, typ = "dual", gamma = 0.99, soft_update = None, memory = None, memory_size = 100000,
                     v_selectivity = True, bypass_short_term = True):
         if typ == "diff":
+            from .experimental import DifferentialQNet
             self.QNet = DifferentialQNet(model, gamma = gamma)
         elif typ == "dual":
+            from .QNet import DualQNet
             self.QNet = DualQNet(model, gamma=gamma, soft_update=soft_update)
         else:
             raise ValueError("Unknown QNet type %s" % (typ,))

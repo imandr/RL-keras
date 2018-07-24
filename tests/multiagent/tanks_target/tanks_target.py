@@ -108,7 +108,7 @@ class EpisodeLogger(Callback):
 
 env = TankTargetEnv()
 model = create_model(env.observation_space.shape[-1], env.action_space.shape[-1])
-brain = QBrain(model, typ="diff", v_selectivity=False, soft_update=0.01, gamma=0.99, bypass_short_term=True)
+brain = QBrain(model, typ="diff", v_selectivity=False, soft_update=0.01, gamma=0.99)
 brain.compile(Adam(lr=1e-3), ["mse"])
 
 tanks = [TankAgent(env, brain, train_sample_size=1000) for _ in range(1)]

@@ -148,10 +148,10 @@ class TankTargetEnv(object):
                                 abs(math.sin(delta)*dist) < self.TARGET_RADIUS:
                             print "=--> hit: alpha=", alpha, "  phi+theta:", s.phi + s.theta, "  delta:", delta, "  dist:", dist
                             s.Done = True
-                            s.reward += 1.0
+                            s.reward += 5.0
                             s.Hit = True        # for rendering
                     else:
-                        s.reward += -0.01
+                        s.reward += -0.02
                     
                 elif a in (1,2):
                     # move

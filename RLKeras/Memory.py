@@ -64,6 +64,7 @@ class ReplayMemory:
                 n_need -= len(longs)
                 if n_need > 0:
                     longs += self.Memory[:n_need]
+                    random.shuffle(self.Memory)
                 self.ISample = (self.ISample + len(longs)) % N
         self.add_to_long(shorts)
         #print "Memory: ISample:", self.ISample, "   size:",N
