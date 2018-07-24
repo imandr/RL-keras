@@ -17,6 +17,7 @@ class ReplayMemory:
         self.Alpha = 0.01
         self.VSel = v_selectivity
         self.BypassShortTerm = bypass_short_term
+        self.ISample = 0
         
     def makeHashable(self, tup):
         return tuple([x if not isinstance(x, (list, np.ndarray)) else tuple(x) for x in tup])
@@ -45,15 +46,27 @@ class ReplayMemory:
         if len(self.Memory) > self.HighWater:
             self.Memory = random.sample(self.Memory, self.MaxSize)
             self.Known = set(map(self.makeHashable, self.Memory+self.ShortTermMemory))
+            self.ISample = self.ISample % len(self.Memory)
         
     def sample(self, size):
         shorts = self.ShortTermMemory[:size]
         n_short = len(shorts)
         self.ShortTermMemory = self.ShortTermMemory[n_short:]
-        n_long = min(len(self.Memory), size - n_short)
-        #print "n_short/n_long:", n_short, n_long
-        longs = random.sample(self.Memory, n_long) if n_long > 0 else []
+        
+        N = len(self.Memory)
+        n_need = min(size-n_short, N)
+        longs = []
+        if n_need > 0:
+            if n_need >= N:
+                longs = self.Memory
+            else:
+                longs = self.Memory[self.ISample:self.ISample+n_need]
+                n_need -= len(longs)
+                if n_need > 0:
+                    longs += self.Memory[:n_need]
+                self.ISample = (self.ISample + len(longs)) % N
         self.add_to_long(shorts)
+        #print "Memory: ISample:", self.ISample, "   size:",N
         return shorts + longs
         
     def size(self):

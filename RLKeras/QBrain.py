@@ -5,7 +5,7 @@ from .tools import format_batch
 
 class QBrain:    
     def __init__(self, model, typ = "diff", gamma = 0.99, soft_update = None, memory = None, memory_size = 100000,
-                    v_selectivity = True, bypass_short_term = False):
+                    v_selectivity = True, bypass_short_term = True):
         if typ == "diff":
             self.QNet = DifferentialQNet(model, gamma = gamma)
         elif typ == "dual":
