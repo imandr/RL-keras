@@ -45,13 +45,143 @@ def get_soft_target_model_updates(target, source, tau):
     updates = [K.update(tw, tw + tau*(sw-tw)) for tw, sw in zip(target_weights, source_weights)]
     return updates
 
+class DQN(object):
+    
+    #
+    # Implements ideas from Mnih (2015):
+    # Online model M fits to target model T:
+    #     M(x0) -> reward + gamma * max(T(x1)) * (1-final)
+    # and M is copied to T periodically
+    #
+    # when double_dqn is True, implememts Hasselt (2015):
+    # Online model M fits to target model T:
+    #     M(x0) -> reward + gamma * (T(x1)[argmax(M(x1))]) * (1-final)
+    # and M is copied to T periodically
+    #
+    
+    def __init__(self, model, hard_update_samples = 1000, gamma=0.99, double_dqn = False):
+        self.Model = model
+        self.TrainSamples = 0
+        self.TrainSamplesBetweenUpdates = self.TrainSamplesToNextUpdate = hard_update_samples
+        self.Gamma = gamma
+        self.XWidth = self.Model.inputs[0].shape[-1]
+        self.NActions = self.Model.output.shape[-1]
+        self.DoubleDQN = double_dqn
+
+    def compile(self, optimizer, metrics=[]):
+        
+        self.TargetModel = clone_model(self.Model)
+        self.TargetModel.compile(optimizer='sgd', loss='mse')
+        self.Model.compile(optimizer='sgd', loss='mse')
+        
+        # build trainable model
+
+        x_shape = (self.XWidth,)
+        q_shape = (self.NActions,)
+
+        x0 = Input(name="x0", shape=x_shape)
+        mask = Input(name='mask', shape=q_shape)
+
+        q0 = self.Model(x0)
+
+        def masked_out(args):
+            q0, mask = args
+            return K.sum(q0*mask, axis=-1)[:,None]      # make it (n,1) shape
+        
+        out = Lambda(masked_out)([q0, mask])
+        
+        trainable = Model(inputs=[x0, mask], output=out)
+        
+        print("--- trainable model summary ---")
+        print(trainable.summary())
+        
+        trainable.compile(optimizer=optimizer, loss="mean_squared_error", metrics=metrics)
+        self.TrainModel = trainable
+
+    def get_weights(self):
+        return (self.Model.get_weights(), self.TargetModel.get_weights())
+        
+    def blend_weights(self, alpha, weights):
+        
+        mw, tw = weights
+        
+        my_mw, my_tw = self.Model.get_weights(), self.TargetModel.get_weights()
+        
+        assert len(mw) == len(my_mw)
+        for my_w, x_w in zip(my_mw, mv):
+            my_w.flat[:] = my_w.flat + alpha*(x_w.flat-my_w.flat)
+
+        assert len(tw) == len(my_tw)
+        for my_w, x_w in zip(my_tw, tv):
+            my_w.flat[:] = my_w.flat + alpha*(x_w.flat-my_w.flat)
+
+        self.set_weights((my_mw, my_tw))
+        
+    def set_weights(self, weights):
+        mw, tw = weights
+        self.Model.set_weights(mw)
+        self.TargetModel.set_weights(tw)
+
+        
+    def compute(self, batch):
+        return self.Model.predict_on_batch(batch)
+        
+    def train(self, sample, batch_size):
+        # samples is list of tuples:
+        # (last_observation, action, reward, new_observation, final, valid_actions, info)
+        
+        #print "samples:"
+        #for s in samples:
+        #    print s
+
+        metrics = None
+        
+        for j in range(0, len(sample), batch_size):
+            batches = zip(*sample[j:j+batch_size])
+            batch_len = len(batches[0])
+        
+            state0_batch = format_batch(batches[0])
+            action_batch = np.array(batches[1])
+            reward_batch = np.array(batches[2])
+            state1_batch = format_batch(np.array(batches[3]))
+            final_state1_batch = np.asarray(batches[4]. dtype=np.float32)
+            mask_batch = np.zeros((batch_len, self.NActions), dtype=np.int8)
+            irange = np.arange(batch_len)
+            
+            mask_batch[irange, action_batch] = 1.0
+            
+            q1t_batch = self.TargetModel.predict_on_batch(state1_batch)
+
+            if self.DoubleDQN:
+                q1m_batch = self.Model.predict_on_batch(state1_batch)
+                inx = np.argmax(q1m_batch, axis=-1)
+                q1_batch = q1t_batch[irange, inx]
+            else:
+                q1_batch = np.max(q1t_batch, axis=-1)
+                
+            q_ = (reward_batch + self.Gamma * (1.0-final_state1_batch) * q1_batch)[:,None]
+            
+            metrics = self.TrainModel.train_on_batch([state0_batch, masks], q_)
+
+            self.TrainSamples += batch_len
+            self.TrainSamplesToNextUpdate -= batch_len
+            if self.TrainSamplesToNextUpdate <= 0:
+                self.TargetModel.set_weights(self.Model.get_weights())
+                self.TrainSamplesToNextUpdate = self.TrainSamplesBetweenUpdates
+                    
+        return metrics[0]
+        
+
+        
 class DualQNet(object):
     
-    def __init__(self, model, soft_update = None, gamma=0.99):
+    def __init__(self, model, soft_update = None, hard_update_samples = 1000, gamma=0.99):
         self.Model = model
         assert soft_update is None or isinstance(soft_update, float) and soft_update < 1.0
         self.SoftUpdate = soft_update
         self.TrainSamples = 0
+        if soft_update is not None: hard_update_samples = None
+        self.TrainSamplesBetweenUpdates = self.TrainSamplesToNextUpdate = hard_update_samples
         self.Gamma = gamma
 
     def compile(self, optimizer, metrics=[]):
@@ -211,11 +341,13 @@ class DualQNet(object):
             #for idx, (mn, m) in enumerate(zip(metrics_names, metrics)):
             #    print "%d: %s = %s" % (idx, mn, m)
             self.TrainSamples += batch_len
+            if self.TrainSamplesToNextUpdate is not None:
+                self.TrainSamplesToNextUpdate -= batch_len
+                if self.TrainSamplesToNextUpdate <= 0:
+                    self.TargetModel.set_weights(self.Model.get_weights())
+                    self.TrainSamplesToNextUpdate = self.TrainSamplesBetweenUpdates
+                    
         return metrics[0]
         
-    def update(self):
-        if self.SoftUpdate is None:
-            self.TargetModel.set_weights(self.Model.get_weights())
-            print "target network updated"
 
         

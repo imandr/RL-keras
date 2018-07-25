@@ -7,8 +7,7 @@ class MultiDQNAgent:
     def __init__(self, env, qbrain, 
             callbacks = None,
             test_policy = None, train_policy = None,
-            train_sample_size = 1000, train_rounds = 1, train_batch_size = 30,
-            trains_between_updates = None):
+            train_sample_size = 1000, train_rounds = 1, train_batch_size = 30):
         self.Env = env
         self.Brain = qbrain
         self.Callbacks = callbacks
@@ -27,8 +26,6 @@ class MultiDQNAgent:
         
         self.TrainSampleSize = train_sample_size
         self.TrainBatchSize = train_batch_size
-        self.TrainsBetweenUpdates = trains_between_updates
-        self.TrainsToUpdate = trains_between_updates
         self.TrainRoundsPerSession = train_rounds
 
         self.SessionsTrained = 0
@@ -98,11 +95,6 @@ class MultiDQNAgent:
                         "train_batches": self.BatchesTrained,
                         "memory_size": self.Brain.recordSize()
                     })
-            if self.TrainsBetweenUpdates is not None:
-                self.TrainsToUpdate -= 1
-                if  self.TrainsToUpdate <= 0:
-                    self.Brain.update()
-                    self.TrainsToUpdate = self.TrainsBetweenUpdates
         return metrics
 
             

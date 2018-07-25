@@ -3,14 +3,19 @@ import numpy as np
 from .tools import format_batch
 
 class QBrain:    
-    def __init__(self, model, typ = "dual", gamma = 0.99, soft_update = None, memory = None, memory_size = 100000,
-                    v_selectivity = True, bypass_short_term = True):
+    def __init__(self, model, typ = "dual", gamma = 0.99, 
+                    # memory parameters
+                    bypass_short_term = True, memory = None, memory_size = 100000, v_selectivity = True,
+                    # dual DQN only
+                    qnet_soft_update = None,             
+                    qnet_hard_update = None             # train samples between live->target network copies
+                    ):
         if typ == "diff":
             from .experimental import DifferentialQNet
             self.QNet = DifferentialQNet(model, gamma = gamma)
         elif typ == "dual":
             from .QNet import DualQNet
-            self.QNet = DualQNet(model, gamma=gamma, soft_update=soft_update)
+            self.QNet = DualQNet(model, gamma=gamma, soft_update=qnet_soft_update, hard_update_samples=qnet_hard_update)
         else:
             raise ValueError("Unknown QNet type %s" % (typ,))
         self.Memory = memory or ReplayMemory(memory_size, v_selectivity=v_selectivity, bypass_short_term=bypass_short_term)
@@ -47,9 +52,6 @@ class QBrain:
         
     def transfer(self, other):
         self.set_weights(other.get_weights())
-        
-    def update(self):
-        self.QNet.update()
         
     def recordSize(self):
         return self.Memory.size()
