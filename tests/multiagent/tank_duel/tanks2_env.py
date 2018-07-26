@@ -114,7 +114,7 @@ class TankDuelEnv(object):
                 if dist <= self.RANGE and abs(delta) < math.pi/2 and abs(dist*delta) <= self.HIT_SIGMA:
                     print "===> hit: alpha=", alpha, "  phi+theta:", t.phi + t.theta, "  delta:", delta, "  dist:", dist
                     other.killed = True
-                    other.reward += -5.0
+                    other.reward -= 3.0
                     t.reward += 5.0
                 else:
                     t.reward += -0.01

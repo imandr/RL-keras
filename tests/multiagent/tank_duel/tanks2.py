@@ -2,8 +2,8 @@ from keras.models import Model
 from keras.layers import Dense, Activation, Flatten, Input
 from keras.optimizers import Adam, Adagrad
 
-from RLKeras import QNet
-from RLKeras.multi import MultiDQNAgent, SynchronousMultiAgentController, QBrain
+from RLKeras import QNet, QBrain
+from RLKeras.multi import MultiDQNAgent, SynchronousMultiAgentController
 from RLKeras.callbacks import Callback, Visualizer
 from RLKeras.policies import GreedyEpsPolicy, BoltzmannQPolicy
 
@@ -92,7 +92,7 @@ class EpisodeLogger(Callback):
 
 env = TankDuelEnv()
 model = create_model(env.observation_space.shape[-1], env.action_space.shape[-1])
-brain = QBrain(model, typ="diff", v_selectivity=True, soft_update=0.01, gamma=0.99)
+brain = QBrain(model, kind="diff", v_selectivity=True, gamma=0.99)
 brain.compile(Adam(lr=1e-3), ["mse"])
 
 tanks = [TankAgent(env, brain, train_sample_size=2000) for _ in (1,2)] 
@@ -100,7 +100,7 @@ controller = SynchronousMultiAgentController(env, tanks,
     rounds_between_train = 10000, episodes_between_train = 1
     )
 
-taus = [0.01, 0.1, 1.0, 2.0]
+taus = [2.0, 1.0, 0.1, 0.01]
 ntaus = len(taus)
 t = 0
 
