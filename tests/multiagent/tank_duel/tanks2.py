@@ -42,25 +42,40 @@ class RunLogger(Callback):
         if isinstance(csv_out, str):
             csv_out = open(csv_out, "w")
         if csv_out is not None:
-            csv_out.write("episodes,rounds,steps,reward_per_episode\n")
+            csv_out.write("episodes,rounds,steps,mean_reward_diff,mean_max,mean_min\n")
         self.CSVOut = csv_out
+        self.SumMin = 0.0
+        self.SumMax = 0.0
+        self.SumDiff = 0.0
     
+    def on_episode_end(self, episode, logs):
+        rewards = [r for t, r in logs["episode_rewards"]]
+        rmin = min(rewards)
+        rmax = max(rewards)
+        self.SumMin += rmin
+        self.SumMax += rmax
+        self.SumDiff += rmax-rmin
+
     def on_run_end(self, param, logs={}):
         rewards = logs["run_rewards"]
         nagents = len(rewards)
         nepisodes = logs["nepisodes"]
-        avg_reward = float(sum([r for t, r in rewards]))/nepisodes/nagents
+        mean_diff = self.SumDiff / nepisodes
+        mean_max = self.SumMax/nepisodes
+        mean_min = self.SumMin/nepisodes
+        self.SumDiff = self.SumMin = self.SumMax = 0.0
+        print "=========================================="
         print "Train episodes/rounds/steps:", \
             logs["total_train_episodes"], \
             logs["total_train_rounds"], \
             logs["total_train_steps"], \
-        "Session reward per episode = ", avg_reward
+        "Average reward difference/min/max = ", mean_diff, mean_min, mean_max
         if self.CSVOut is not None:
-            self.CSVOut.write("%d,%d,%d,%f\n" % ( 
+            self.CSVOut.write("%d,%d,%d,%f,%f,%f\n" % ( 
                     logs["total_train_episodes"],
                     logs["total_train_rounds"],
                     logs["total_train_steps"],
-                    avg_reward
+                    mean_diff, mean_max, mean_min
                 )
             )
             self.CSVOut.flush()
@@ -91,11 +106,14 @@ class EpisodeLogger(Callback):
             (episode, logs["nrounds"], rewards, avq, self.Actions)
 
 env = TankDuelEnv()
-model = create_model(env.observation_space.shape[-1], env.action_space.shape[-1])
-brain = QBrain(model, kind="diff", v_selectivity=True, gamma=0.99)
-brain.compile(Adam(lr=1e-3), ["mse"])
+tanks = []
 
-tanks = [TankAgent(env, brain, train_sample_size=2000) for _ in (1,2)] 
+for _ in (1,2):
+    model = create_model(env.observation_space.shape[-1], env.action_space.shape[-1])
+    brain = QBrain(model, kind="diff", v_selectivity=False, gamma=0.99)
+    brain.compile(Adam(lr=1e-3), ["mse"])
+    tanks.append(TankAgent(env, brain, train_sample_size=1000))
+
 controller = SynchronousMultiAgentController(env, tanks,
     rounds_between_train = 10000, episodes_between_train = 1
     )
@@ -116,7 +134,8 @@ for _ in range(20000):
         print "Tau=%f, training..." % (tau,)
         controller.fit(max_episodes=10, callbacks=[RunLogger(), EpisodeLogger()], policy=policy)
     print "-- Testing..."
-    controller.test(max_episodes=10, callbacks=[Visualizer(), EpisodeLogger()], policy=test_policy)
+    controller.test(max_episodes=50, callbacks=[EpisodeLogger(), test_run_logger], policy=test_policy)
+    controller.test(max_episodes=5, callbacks=[Visualizer(), EpisodeLogger()], policy=test_policy)
     
 
     

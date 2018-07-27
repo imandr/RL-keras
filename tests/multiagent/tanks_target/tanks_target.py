@@ -117,7 +117,7 @@ class EpisodeLogger(Callback):
             
 opts, args = getopt.getopt(sys.argv[1:], "k:r:h?")
 opts = dict(opts)
-kind = opts.get("-k", "qdn")
+kind = opts.get("-k", "diff")
 run_log = opts.get("-r", "run_log.csv")
 if "-h" in opts or "-?" in opts:
     print """Usage:
@@ -126,11 +126,23 @@ if "-h" in opts or "-?" in opts:
     sys.exit(1)
 
 env = TankTargetEnv()
-model = create_model(env.observation_space.shape[-1], env.action_space.shape[-1])
-brain = QBrain(model, kind=kind, v_selectivity=False, qnet_hard_update=10000, gamma=0.99)
-brain.compile(Adam(lr=1e-3), ["mse"])
+tanks = []
 
-tanks = [TankAgent(env, brain, train_sample_size=1000) for _ in range(1)]
+share_brain = False
+if share_brain:
+    model = create_model(env.observation_space.shape[-1], env.action_space.shape[-1])
+    brain = QBrain(model, kind=kind, v_selectivity=False, qnet_hard_update=10000, gamma=0.99)
+    brain.compile(Adam(lr=1e-3), ["mse"])
+
+    tanks = [TankAgent(env, brain, train_sample_size=1000) for _ in range(1)]
+else:
+    for _ in (1,2,3):
+        model = create_model(env.observation_space.shape[-1], env.action_space.shape[-1])
+        brain = QBrain(model, kind=kind, v_selectivity=False, qnet_hard_update=10000, gamma=0.99)
+        brain.compile(Adam(lr=1e-3), ["mse"])
+
+        tanks.append(TankAgent(env, brain, train_sample_size=1000))
+        
 #, 
 #        TankAgent(env, brain, test_policy=GreedyEpsPolicy(0.0), train_sample_size = 20, train_rounds = 50)]
 controller = SynchronousMultiAgentController(env, tanks,

@@ -7,7 +7,7 @@ class MultiDQNAgent:
     def __init__(self, env, qbrain, 
             callbacks = None,
             test_policy = None, train_policy = None,
-            train_sample_size = 1000, train_rounds = 1, train_batch_size = 30):
+            train_sample_size = 1000, train_rounds = 1, train_batch_size = 20):
         self.Env = env
         self.Brain = qbrain
         self.Callbacks = callbacks

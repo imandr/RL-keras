@@ -37,7 +37,7 @@ class TankDuelEnv(object):
         self.Tanks = []
         self.Actions = {}
         self.Viewer = rendering.Viewer(self.VIEWPORT, self.VIEWPORT)
-        self.observation_space = Space((11,))
+        self.observation_space = Space((10,))
         self.action_space = Space((self.NACTIONS,))
         self.T = self.TMAX
         
@@ -69,19 +69,17 @@ class TankDuelEnv(object):
             
             observation = np.array([
                 # self position relative to edges
-                1.0/t.xy[0],
-                1.0/t.xy[1],
-                1.0/(self.SIZE-t.xy[0]),
-                1.0/(self.SIZE-t.xy[1]),
+                t.xy[0]/self.RANGE,
+                t.xy[1]/self.RANGE,
+                (self.SIZE-t.xy[0])/self.RANGE,
+                (self.SIZE-t.xy[1])/self.RANGE,
                 # self rangles
                 t.phi/math.pi,
                 t.theta/math.pi,
                 # the other tank position
                 dist/self.RANGE,
-                alpha/math.pi,
-                # the other tank angles
-                t1.phi/math.pi,
-                t1.theta/math.pi,
+                angle_in_range(alpha-t.phi-t.theta)/math.pi,
+                angle_in_range(alpha+math.pi-t1.phi-t1.theta)/math.pi,
                 self.T/self.TMAX
             ])
             
@@ -94,7 +92,7 @@ class TankDuelEnv(object):
         if not isinstance(agents_actions, list):
             agents_actions = [(agent, agents_actions)]
             
-        for t in self.Tanks:
+        for t, _ in agents_actions:
             t.reward = 0.0
 
         # all fire actions first
@@ -114,7 +112,7 @@ class TankDuelEnv(object):
                 if dist <= self.RANGE and abs(delta) < math.pi/2 and abs(dist*delta) <= self.HIT_SIGMA:
                     print "===> hit: alpha=", alpha, "  phi+theta:", t.phi + t.theta, "  delta:", delta, "  dist:", dist
                     other.killed = True
-                    other.reward -= 3.0
+                    other.reward -= 5.0
                     t.reward += 5.0
                 else:
                     t.reward += -0.01
