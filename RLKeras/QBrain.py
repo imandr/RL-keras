@@ -5,7 +5,7 @@ from .tools import format_batch
 class QBrain:    
     def __init__(self, model, kind = "dqn", gamma = 0.99, 
                     # memory parameters
-                    bypass_short_term = True, memory = None, memory_size = 100000, v_selectivity = True,
+                    bypass_short_term = True, memory = None, memory_size = 100000, v_selectivity = False,
                     # dual DQN only
                     qnet_soft_update = None,             
                     qnet_hard_update = None             # train samples between live->target network copies

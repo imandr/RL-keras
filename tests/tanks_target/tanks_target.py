@@ -115,30 +115,32 @@ class EpisodeLogger(Callback):
         print "Episode end: %d, rounds: %d, rewards: %s, shots: %s, average q: %s, actions: %s" % \
             (episode, logs["nrounds"], rewards, shots, avq, self.Actions)
             
-opts, args = getopt.getopt(sys.argv[1:], "k:r:h?")
+opts, args = getopt.getopt(sys.argv[1:], "k:r:h?g:")
 opts = dict(opts)
 kind = opts.get("-k", "diff")
 run_log = opts.get("-r", "run_log.csv")
+gamma = float(opts.get("-g", 0.9))
+
 if "-h" in opts or "-?" in opts:
     print """Usage:
          python tanks_target.py [-k kind] [-r <run log CVS file>]
     """
     sys.exit(1)
 
-env = TankTargetEnv()
+env = TankTargetEnv(kind)
 tanks = []
 
-share_brain = False
+share_brain = True
 if share_brain:
     model = create_model(env.observation_space.shape[-1], env.action_space.shape[-1])
-    brain = QBrain(model, kind=kind, v_selectivity=False, qnet_hard_update=10000, gamma=0.99)
+    brain = QBrain(model, kind=kind, v_selectivity=False, qnet_hard_update=100000, gamma=gamma)
     brain.compile(Adam(lr=1e-3), ["mse"])
 
     tanks = [TankAgent(env, brain, train_sample_size=1000) for _ in range(1)]
 else:
     for _ in (1,2,3):
         model = create_model(env.observation_space.shape[-1], env.action_space.shape[-1])
-        brain = QBrain(model, kind=kind, v_selectivity=False, qnet_hard_update=10000, gamma=0.99)
+        brain = QBrain(model, kind=kind, v_selectivity=False, qnet_hard_update=100000, gamma=gamma)
         brain.compile(Adam(lr=1e-3), ["mse"])
 
         tanks.append(TankAgent(env, brain, train_sample_size=1000))

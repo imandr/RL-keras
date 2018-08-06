@@ -22,6 +22,7 @@ class TankTargetEnv(object):
     TARGET_RADIUS = 3.0
     TURN = 1.0*math.pi/180      
     TURRET_TURN = 1.0*math.pi/180   
+    AMMO = 10
     
     NACTIONS = 7   # fire, 
                     # forward slow, forward fast, 
@@ -58,6 +59,7 @@ class TankTargetEnv(object):
         def observation(self, t, target):
             #print "observation: t=", t
             return np.array([
+                float(self.Ammo)/TankTargetEnv.AMMO,
                 float(t)/TankTargetEnv.TMAX,        # time remaining
                 self.xy[0]/TankTargetEnv.RANGE,     # distance to walls
                 self.xy[1]/TankTargetEnv.RANGE,
@@ -75,14 +77,16 @@ class TankTargetEnv(object):
             self.theta = angle_in_range(self.theta + delta)
             
     
-    def __init__(self):
+    def __init__(self, name=None):
         self.Tanks = []
         self.Actions = {}
         self.Viewer = rendering.Viewer(self.VIEWPORT, self.VIEWPORT)
+        if name is not None:
+            w = self.Viewer.window.set_caption(name)
         #w=self.Viewer.window
         #cfg = pyglet.gl.Config(accum_red_size=8, accum_green_size=8, accum_blue_size=8)
         
-        self.observation_space = Space((8,))
+        self.observation_space = Space((9,))
         self.action_space = Space((self.NACTIONS,))
         self.Target = None
         self.T = self.TMAX
@@ -100,6 +104,7 @@ class TankTargetEnv(object):
         for t in tanks:
             s = self.TankState()
             t.State = s
+            s.Ammo = self.AMMO
             s.xy = np.random.uniform(high=self.SIZE, size=(2,))
             s.phi = np.random.uniform(low=-math.pi, high=math.pi)
             self.Target = np.random.uniform(low=self.SIZE*0.1, high=self.SIZE*0.9, size=(2,))
@@ -138,9 +143,12 @@ class TankTargetEnv(object):
                 s = t.State
                 s.Hit = False
                 self.Actions[id(t)] = a    # for rendering
+                s.Fired = False
 
-                if a == 0:    # fire
+
+                if a == 0 and s.Ammo > 0:    # fire
                     # find the other tank
+                    s.Fired = True
                     s.Shots += 1
                     dist = s.targetDist(self.Target)
                     if dist <= self.RANGE:
@@ -150,11 +158,12 @@ class TankTargetEnv(object):
                                 abs(math.sin(delta)*dist) < self.TARGET_RADIUS:
                             print "=--> hit: alpha=", alpha, "  phi+theta:", s.phi + s.theta, "  delta:", delta, "  dist:", dist
                             s.Hit = True        # for rendering
+                    s.Ammo -= 1
                     if s.Hit:
-                        s.Done = True
                         s.reward += 5.0
                     else:
                         s.reward -= 0.01
+                    s.Done = s.Ammo <= 0 or s.Hit
                     
                 elif a in (1,2):
                     # move
@@ -263,7 +272,7 @@ class TankTargetEnv(object):
                     color=self.TowerColor, filled=not s.Done)
             self.Viewer.draw_polygon(self.shift_rotate(self.CannonPoly, s.phi+s.theta, s.xy),
                     color=self.CannonColor, filled=not s.Done)
-            if self.Actions.get(id(t)) == self.FIRE_ACTION:
+            if s.Fired:
                 self.Viewer.draw_polygon(self.shift_rotate(self.FirePoly, s.phi+s.theta, s.xy),
                     color = self.FireColor, filled=not s.Done)
             

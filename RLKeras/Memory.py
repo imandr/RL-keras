@@ -5,7 +5,7 @@ class ReplayMemory:
     
     M = 1
     
-    def __init__(self, size, v_selectivity = True, bypass_short_term = True):
+    def __init__(self, size, v_selectivity = False, bypass_short_term = True, filter_duplicates = False):
         self.MaxSize = size
         self.HighWater = int(size*1.3)
         self.Memory = []
@@ -18,6 +18,7 @@ class ReplayMemory:
         self.VSel = v_selectivity
         self.BypassShortTerm = bypass_short_term
         self.ISample = 0
+        self.FilterDuplicates = filter_duplicates
         
     def makeHashable(self, tup):
         return tuple([x if not isinstance(x, (list, np.ndarray)) else tuple(x) for x in tup])
@@ -28,15 +29,19 @@ class ReplayMemory:
         sigma = self.MeanSQ - self.MeanW**2
         #if sigma == 0.0 or math.exp(-(weight-self.MeanW)**2/(2*sigma)) < random.random():
         if not self.VSel or sigma == 0.0 or math.exp(-abs(weight-self.MeanW)/sigma) < random.random():
-            key = self.makeHashable(tup)
-            #print key
-            if not key in self.Known:
+            key = None
+            do_add = True
+            if self.FilterDuplicates:
+                key = self.makeHashable(tup)
+                do_add = not key in self.Known
+            if do_add:
                 if self.BypassShortTerm:
                     self.add_to_long([tup])
                 else:
                     self.ShortTermMemory.append(tup)
                 #print tup
-                self.Known.add(key)
+                if self.FilterDuplicates:
+                    self.Known.add(key)
                 self.Age += 1
             #else:
             #    print "repeated"
@@ -44,8 +49,10 @@ class ReplayMemory:
     def add_to_long(self, tups):
         self.Memory.extend(tups)
         if len(self.Memory) > self.HighWater:
+            print "reducing memory..."
             self.Memory = random.sample(self.Memory, self.MaxSize)
-            self.Known = set(map(self.makeHashable, self.Memory+self.ShortTermMemory))
+            if self.FilterDuplicates:
+                self.Known = set(map(self.makeHashable, self.Memory+self.ShortTermMemory))
             self.ISample = self.ISample % len(self.Memory)
         
     def sample(self, size):

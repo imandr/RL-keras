@@ -72,7 +72,7 @@ class DQN(object):
     # and M is copied to T periodically
     #
     
-    def __init__(self, model, kind="dqn", hard_update_samples = 10000, gamma=0.99):
+    def __init__(self, model, kind="dqn", hard_update_samples = 100000, gamma=0.99):
         self.Model = model
         self.TrainSamples = 0
         self.TrainSamplesBetweenUpdates = self.TrainSamplesToNextUpdate = hard_update_samples
@@ -80,7 +80,7 @@ class DQN(object):
         self.XWidth = self.Model.inputs[0].shape[-1]
         self.NActions = self.Model.output.shape[-1]
         self.Kind = kind
-        self.SoftUpdate = 0.01
+        self.SoftUpdate = None  #0.01
 
     def compile(self, optimizer, metrics=[]):
         

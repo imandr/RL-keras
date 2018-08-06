@@ -34,7 +34,19 @@ class MultiDQNAgent:
         self.BrainUpdated = 0
         #self.StepsToWarmup = steps_to_warmup
 
+    def episodeBegin(self):
+        #print "MultiDQNAgent: episodeBegin()"
+        self.Valids1 = None
+        self.Action0 = None
+        self.Action1 = None
+        self.Reward0 = None
+        self.Reward1 = None
+        self.Done = False
+        self.Observation0 = None
+        self.Observation1 = None
+        
     def action(self, observation, valid_actions, training, policy=None):
+        #print "MultiDQNAgent: action()"
         self.Observation0 = self.Observation1
         self.Observation1 = observation
         self.Valids1 = valid_actions
@@ -49,6 +61,7 @@ class MultiDQNAgent:
         return action
                 
     def learn(self, action, reward):
+        #print "MultiDQNAgent: learn()"
         self.Action0 = self.Action1
         self.Action1 = action
         self.Reward0 = self.Reward1
@@ -58,6 +71,15 @@ class MultiDQNAgent:
                 raise ValueError("action0, action1, reward0, reward1=%s,%s,%s,%s" % (self.Action0, self.Action1, self.Reward0, self.Reward1))
             self.Brain.memorize((self.Observation0, self.Action0, self.Reward0, 
                 self.Observation1, False, self.Valids1), self.Reward0)    
+
+    def final(self, observation, training):
+        #print "MultiDQNAgent: final()"
+        if training:
+            self.Brain.memorize((self.Observation1, self.Action1, self.Reward1, 
+                observation, True, []), self.Reward1)   
+
+    def episodeEnd(self, observation):
+        pass
 
     def trainBrain(self, callbacks):
         metrics = None
@@ -98,22 +120,6 @@ class MultiDQNAgent:
         return metrics
 
             
-    def episodeBegin(self):
-        self.Valids1 = None
-        self.Action0 = None
-        self.Action1 = None
-        self.Reward0 = None
-        self.Reward1 = None
-        self.Done = False
-        self.Observation0 = None
-        self.Observation1 = None
-        
-    def episodeEnd(self, observation):
-        pass
     
-    def final(self, observation, training):
-        if training:
-            self.Brain.memorize((self.Observation1, self.Action1, self.Reward1, 
-                observation, True, []), self.Reward1)   
         
 
