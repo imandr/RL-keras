@@ -1,3 +1,7 @@
+#
+# This file is copied from gym OpenAI and then slightly modified
+#
+
 import sys, math
 import numpy as np
 
@@ -73,7 +77,7 @@ class ContactDetector(contactListener):
             if self.env.legs[i] in [contact.fixtureA.body, contact.fixtureB.body]:
                 self.env.legs[i].ground_contact = False
 
-class LunarLander(gym.Env):
+class LunarLanderEnv(gym.Env):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
         'video.frames_per_second' : FPS
@@ -322,7 +326,7 @@ class LunarLander(gym.Env):
             + 100*state[6] + 100*state[7]   # And ten points for legs contact, the idea is if you
                                                               # lose contact again after landing, you get negative reward
         if self.prev_shaping is not None:
-            reward = shaping - self.prev_shaping
+            reward = (shaping - self.prev_shaping)/10.0
         self.prev_shaping = shaping
 
         #reward -= m_power*0.30  # less fuel spent is better, about -30 for heurisic landing
@@ -330,14 +334,17 @@ class LunarLander(gym.Env):
 
         done = False
         if self.game_over or abs(state[0]) >= 1.0:
-            done   = True
+            done = True
             #print "game over"
             reward = -100
-        if not self.lander.awake:
+        elif not self.lander.awake:
             done   = True
             #reward += 100
             if self.lander.position.x >= self.helipad_x1 and self.lander.position.x <= self.helipad_x2:
-                reward = +200
+                reward = +450
+                print "Soft landing"
+            else:
+                reward = 0
             if self.fuel is not None:
                 reward += 50*self.fuel/FUEL_CAPACITY
         #if done:
@@ -400,7 +407,7 @@ class LunarLander(gym.Env):
             self.viewer.close()
             self.viewer = None
 
-class LunarLanderContinuous(LunarLander):
+class LunarLanderContinuous(LunarLanderEnv):
     continuous = True
 
 def heuristic(env, s):

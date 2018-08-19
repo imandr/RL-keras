@@ -1,6 +1,6 @@
 from .Memory import ReplayMemory
 from .QNet import DualQNet  #, DifferentialQNet
-from .GymEnv import GymEnv
+from .GymEnv import GymEnv, GymEnv as EnvFromGymEnv
 from .QBrain import QBrain
 from .experimental import DifferentialQNet
 

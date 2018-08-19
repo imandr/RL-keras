@@ -26,9 +26,20 @@ class ReplayMemory:
     def add(self, tup, weight):
         self.MeanSQ += self.Alpha*(weight**2-self.MeanSQ)
         self.MeanW += self.Alpha*(weight-self.MeanW)
-        sigma = self.MeanSQ - self.MeanW**2
+        sigma = math.sqrt(self.MeanSQ - self.MeanW**2)
         #if sigma == 0.0 or math.exp(-(weight-self.MeanW)**2/(2*sigma)) < random.random():
-        if not self.VSel or sigma == 0.0 or math.exp(-abs(weight-self.MeanW)/sigma) < random.random():
+        accept = True
+        if self.VSel:
+            self.MeanSQ += self.Alpha*(weight**2-self.MeanSQ)
+            self.MeanW += self.Alpha*(weight-self.MeanW)
+            sigma = math.sqrt(self.MeanSQ - self.MeanW**2)
+            if sigma != 0:
+                accept = math.exp(-abs(weight-self.MeanW)/sigma)*0.9 < random.random()
+            
+        if False and self.VSel and self.Age and self.Age % 100 == 0:
+            print "Memory: age=%d mean=%.4f, sigma=%.4f (zero:%s)  accept:%s" % (self.Age, self.MeanW, sigma, sigma==0.0, accept)
+            
+        if accept:
             key = None
             do_add = True
             if self.FilterDuplicates:

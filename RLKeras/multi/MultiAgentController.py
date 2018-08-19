@@ -35,27 +35,24 @@ class MultiAgentController:
 
 class SynchronousMultiAgentController(MultiAgentController):
     
-    def randomMoves(self, env, agents, max_rounds, callbacks = []):
+    def randomMoves(self, agents, max_rounds, training=True, callbacks = None):
+
+        callbacks = callbacks or []
+        
         callbacks = CallbackList(callbacks)
-        callbacks._set_env(env)
+        callbacks._set_env(self.Env)
+
         for sample in xrange(max_rounds):
-            env.reset(agents, random=True)
-            observations = env.observe(agents)
-            actions = []
-            active_agents = []
-            for agent, observation, valids, done, info in observations:
-                if done:
-                    agent.final(observation, True)
-                else:
-                    agent.action(observation, valids, True)
-                    actions.append((agent, random.choice(valids)))
-                    active_agents.append(agent)
-            env.step(actions)
-            feedback = env.feedback(active_agents)
-            for i, (agent, reward, info) in enumerate(feedback):
-                agent.learn(actions[i][1], reward)
+            moves = self.Env.randomMoves(agents)
+            for agent, obs0, action, obs1, reward, done, valids, info in moves:
+                #print "randomMoves: memorizing:", obs0, action, reward, obs1, done, valids
+                agent.memorize((obs0, action, reward, obs1, done, valids), reward)
             self.RoundsToTrain -= 1
-            self.trainIfNeeded(agents, callbacks)
+            if training:    self.trainIfNeeded(agents, callbacks)
+
+            #self.Brain.memorize((self.Observation0, self.Action0, self.Reward0, 
+            #    self.Observation1, False, self.Valids1), self.Reward0)    
+
     
     def run(self, env, agents, max_episodes, max_rounds, max_steps, callbacks, training, policy):
         
@@ -125,7 +122,7 @@ class SynchronousMultiAgentController(MultiAgentController):
                         agent.final(observation, training)
                     else:
                         active_agents.append(agent)
-                        actions_list.append((agent, agent.action(observation, valids, training, policy=policy)))
+                        actions_list.append((agent, agent.action(observation, valids, training, policy)))
 
                 feedback = []
                 #print "active_agents:", len(active_agents)

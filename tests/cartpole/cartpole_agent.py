@@ -5,7 +5,7 @@ np.set_printoptions(precision=4, suppress=True)
 
 from keras.models import Model
 from keras.layers import Dense, Activation, Flatten, Input
-from keras.optimizers import Adam, Adagrad
+from keras.optimizers import Adam, Adagrad, Adadelta
 
 from RLKeras import QBrain
 from RLKeras.multi import MultiDQNAgent
@@ -13,12 +13,12 @@ from RLKeras.multi import MultiDQNAgent
 #from RLKeras.policies import GreedyEpsPolicy, BoltzmannQPolicy
 
 
-class LunarLander(MultiDQNAgent):
+class CartPoleAgent(MultiDQNAgent):
     
-    def __init__(self, env, kind="diff", gamma=0.99):
+    def __init__(self, env, kind="diff", gamma=0.8, weight=0.9):
         model = self.create_model(env.observation_space.shape[0], env.action_space.n)
-        brain = QBrain(model, kind=kind, gamma=gamma, v_selectivity=False, qnet_soft_update=0.01)
-        brain.compile(Adam(lr=1e-3), ["mse"])
+        brain = QBrain(model, kind=kind, gamma=gamma, v_selectivity=False, qnet_soft_update=0.01, diff_qnet_weight=weight)
+        brain.compile(Adadelta(), ["mse"])
         MultiDQNAgent.__init__(self, env, brain, train_sample_size=1000, train_batch_size=50)
         
     def create_model(self, inp_width, out_width):

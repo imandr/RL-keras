@@ -1,10 +1,10 @@
 from RLKeras.callbacks import Callback, Visualizer
 from RLKeras.multi import SynchronousMultiAgentController
 from RLKeras.policies import BoltzmannQPolicy
-from RLKeras import GymEnv
-from env import CartPoleEnv
+from RLKeras import EnvFromGymEnv
 
-from cartpole_agent import CartPoleAgent
+from env import LunarLanderEnv
+from lander_agent import LunarLander
 
 import numpy as np
 import math, getopt, sys
@@ -94,12 +94,11 @@ class QVectorLogger(Callback):
     def on_episode_end(self, *_, **__):
         self.LogFile.close()
 
-opts, args = getopt.getopt(sys.argv[1:], "k:r:h?g:w:")
+opts, args = getopt.getopt(sys.argv[1:], "k:r:h?g:")
 opts = dict(opts)
 kind = opts.get("-k", "diff")
 run_log = opts.get("-r", "run_log.csv")
-gamma = float(opts.get("-g", 0.8))
-weight = float(opts.get("-w", 0.9))
+gamma = float(opts.get("-g", 0.99))
 
 if "-h" in opts or "-?" in opts:
     print """Usage:
@@ -107,23 +106,25 @@ if "-h" in opts or "-?" in opts:
     """
     sys.exit(1)
 
-env = GymEnv(CartPoleEnv())
-
+env = EnvFromGymEnv(LunarLanderEnv())
 print "Environment initialized:", env
-agent = CartPoleAgent(env, kind=kind, gamma=gamma, weight=weight)
+lander = LunarLander(env, kind=kind, gamma=gamma)
 
-controller = SynchronousMultiAgentController(env, [agent],                 
+controller = SynchronousMultiAgentController(env, [lander],                 
     rounds_between_train = 5000, episodes_between_train = 1)
 
-taus = [1.0, 0.1, 0.01, 0.001]
+taus = [0.1, 0.01, 0.001, 0.0001]
 ntaus = len(taus)
 t = 0
 
-test_policy = BoltzmannQPolicy(0.0001)
+test_policy = BoltzmannQPolicy(0.00001)
 train_run_logger = RunLogger()
 test_run_logger = RunLogger(run_log, loss_info_from=train_run_logger)
 
 for _ in range(20000):
+
+    #controller.randomMoves([lander], 1000)
+
     for i in range(2*ntaus):
         tau = taus[t%ntaus]
         policy = BoltzmannQPolicy(tau)

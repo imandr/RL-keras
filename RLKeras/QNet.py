@@ -3,18 +3,8 @@ from keras.models import model_from_config, Model
 from keras.layers import Lambda, Input, Layer, Dense
 import keras.backend as K
 from keras import optimizers
-from tools import best_valid_action, format_batch
+from tools import best_valid_action, format_batch, clone_model
 import time, math
-
-def clone_model(model, custom_objects={}):
-    # Requires Keras 1.0.7 since get_config has breaking changes.
-    config = {
-        'class_name': model.__class__.__name__,
-        'config': model.get_config(),
-    }
-    clone = model_from_config(config, custom_objects=custom_objects)
-    clone.set_weights(model.get_weights())
-    return clone
     
 class AdditionalUpdatesOptimizer(optimizers.Optimizer):
     def __init__(self, optimizer, additional_updates):
@@ -72,7 +62,7 @@ class DQN(object):
     # and M is copied to T periodically
     #
     
-    def __init__(self, model, kind="dqn", hard_update_samples = 100000, gamma=0.99):
+    def __init__(self, model, kind="dqn", hard_update_samples = 100000, soft_update = None, gamma=0.99):
         self.Model = model
         self.TrainSamples = 0
         self.TrainSamplesBetweenUpdates = self.TrainSamplesToNextUpdate = hard_update_samples
@@ -80,7 +70,7 @@ class DQN(object):
         self.XWidth = self.Model.inputs[0].shape[-1]
         self.NActions = self.Model.output.shape[-1]
         self.Kind = kind
-        self.SoftUpdate = None  #0.01
+        self.SoftUpdate = soft_update  #0.01
 
     def compile(self, optimizer, metrics=[]):
         
@@ -156,8 +146,10 @@ class DQN(object):
         metrics = None
         
         for j in range(0, len(sample), batch_size):
+            #print sample[j:j+batch_size]
             batches = zip(*sample[j:j+batch_size])
             batch_len = len(batches[0])
+            if batch_len < batch_size:  break
         
             state0_batch = format_batch(batches[0])
             action_batch = np.array(batches[1])
@@ -189,8 +181,18 @@ class DQN(object):
             q_ = (reward_batch + self.Gamma * (1.0-final_state1_batch) * q1_batch)[:,None]
             #print "q_:", q_
             
-            metrics = self.TrainModel.train_on_batch([state0_batch, mask_batch], q_)
+            #qvalues_calculated = self.Model.predict_on_batch(state0_batch)
+        
+            #print "batch (%d):" % (batch_len,)
+            #for v0, v1, f, m, r, qc in zip(state0_batch, state1_batch, final_state1_batch, mask_batch, 
+            #        reward_batch, qvalues_calculated):
+            #    print v0[:5], v1[:5], f, m, r, qc
 
+            t0 = time.time()
+            #print state0_batch.shape, mask_batch.shape, q_.shape
+            metrics = self.TrainModel.train_on_batch([state0_batch, mask_batch], q_)
+            #print time.time() - t0
+            
             if self.SoftUpdate is None:
                 self.TrainSamples += batch_len
                 self.TrainSamplesToNextUpdate -= batch_len

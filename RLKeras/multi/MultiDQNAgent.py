@@ -1,4 +1,3 @@
-from ..policies import GreedyEpsPolicy
 import numpy as np
 import random
 
@@ -6,7 +5,6 @@ class MultiDQNAgent:
     
     def __init__(self, env, qbrain, 
             callbacks = None,
-            test_policy = None, train_policy = None,
             train_sample_size = 1000, train_rounds = 1, train_batch_size = 20):
         self.Env = env
         self.Brain = qbrain
@@ -21,9 +19,6 @@ class MultiDQNAgent:
         self.Reward0 = None
         self.Reward1 = None
 
-        self.TrainPolicy = train_policy or GreedyEpsPolicy(0.3)
-        self.TestPolicy = test_policy or GreedyEpsPolicy(0.0)
-        
         self.TrainSampleSize = train_sample_size
         self.TrainBatchSize = train_batch_size
         self.TrainRoundsPerSession = train_rounds
@@ -33,6 +28,9 @@ class MultiDQNAgent:
         self.SamplesTrained = 0
         self.BrainUpdated = 0
         #self.StepsToWarmup = steps_to_warmup
+        
+    def memorize(self, tup, weight):
+        self.Brain.memorize(tup, weight)
 
     def episodeBegin(self):
         #print "MultiDQNAgent: episodeBegin()"
@@ -45,7 +43,7 @@ class MultiDQNAgent:
         self.Observation0 = None
         self.Observation1 = None
         
-    def action(self, observation, valid_actions, training, policy=None):
+    def action(self, observation, valid_actions, training, policy):
         #print "MultiDQNAgent: action()"
         self.Observation0 = self.Observation1
         self.Observation1 = observation
@@ -53,9 +51,10 @@ class MultiDQNAgent:
         
         qvector = self.Brain.qvector(observation)
         self.QVector = qvector
-        policy = policy or (self.TrainPolicy if training else self.TestPolicy)
         #print "using policy", policy
         action = policy(qvector, valid_actions)
+        #if policy.tau == 0.0001:
+        #    print "qvector:", qvector, "   action:", action
         #print "t:", training,"  o:", observation, "  q:",qvector, "  a:", action,"(",np.argmax(qvector),")"
         #print "action=", action
         return action

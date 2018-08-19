@@ -5,17 +5,25 @@ from .tools import format_batch
 class QBrain:    
     def __init__(self, model, kind = "dqn", gamma = 0.99, 
                     # memory parameters
-                    bypass_short_term = True, memory = None, memory_size = 100000, v_selectivity = False,
+                    bypass_short_term = True, memory = None, memory_size = 200000, v_selectivity = False,
                     # dual DQN only
+                    diff_qnet_weight = 0.99,
                     qnet_soft_update = None,             
-                    qnet_hard_update = None             # train samples between live->target network copies
+                    qnet_hard_update = 10000             # train samples between live->target network copies
                     ):
         if kind == "diff":
             from .experimental import DifferentialQNet
             self.QNet = DifferentialQNet(model, gamma = gamma)
+        elif kind == "diff2":
+            from .experimental import DifferentialQNet2
+            self.QNet = DifferentialQNet2(model, gamma = gamma, rel_weight=diff_qnet_weight)
+        elif kind == "qv":
+            from .experimental import QVNet
+            self.QNet = QVNet(model, gamma = gamma, rel_weight=diff_qnet_weight)
         elif kind in ("dqn","double","naive"):
             from .QNet import DQN
-            self.QNet = DQN(model, kind=kind, gamma=gamma, hard_update_samples=qnet_hard_update)
+            self.QNet = DQN(model, kind=kind, gamma=gamma, soft_update = qnet_soft_update,
+                    hard_update_samples=qnet_hard_update)
         else:
             raise ValueError("Unknown QNet kind %s" % (kind,))
         self.Memory = memory or ReplayMemory(memory_size, v_selectivity=v_selectivity, bypass_short_term=bypass_short_term)
@@ -34,7 +42,7 @@ class QBrain:
 
     def train(self, sample_size, batch_size):
         sample = self.Memory.sample(sample_size)
-        #print len(sample), batch_size
+        #print "QBrain: got sample:", len(sample), batch_size
         return self.QNet.train(sample, batch_size)
         
     def get_weights(self):
