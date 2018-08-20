@@ -94,11 +94,12 @@ class QVectorLogger(Callback):
     def on_episode_end(self, *_, **__):
         self.LogFile.close()
 
-opts, args = getopt.getopt(sys.argv[1:], "k:r:h?g:")
+opts, args = getopt.getopt(sys.argv[1:], "k:r:h?g:w:")
 opts = dict(opts)
 kind = opts.get("-k", "diff")
 run_log = opts.get("-r", "run_log.csv")
 gamma = float(opts.get("-g", 0.99))
+rel_weight = float(opts.get("-w", 0.7))
 
 if "-h" in opts or "-?" in opts:
     print """Usage:
@@ -108,7 +109,7 @@ if "-h" in opts or "-?" in opts:
 
 env = EnvFromGymEnv(LunarLanderEnv())
 print "Environment initialized:", env
-lander = LunarLander(env, kind=kind, gamma=gamma)
+lander = LunarLander(env, kind=kind, gamma=gamma, diff_qnet_weight=rel_weight)
 
 controller = SynchronousMultiAgentController(env, [lander],                 
     rounds_between_train = 5000, episodes_between_train = 1)

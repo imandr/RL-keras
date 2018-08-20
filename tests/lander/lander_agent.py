@@ -15,9 +15,9 @@ from RLKeras.multi import MultiDQNAgent
 
 class LunarLander(MultiDQNAgent):
     
-    def __init__(self, env, kind="diff", gamma=0.99):
+    def __init__(self, env, kind="diff", gamma=0.99, diff_qnet_weight=0.7):
         model = self.create_model(env.observation_space.shape[0], env.action_space.n)
-        brain = QBrain(model, kind=kind, gamma=gamma, v_selectivity=False, qnet_soft_update=0.01)
+        brain = QBrain(model, kind=kind, gamma=gamma, v_selectivity=False, qnet_soft_update=0.01, diff_qnet_weight=diff_qnet_weight)
         brain.compile(Adam(lr=1e-3), ["mse"])
         MultiDQNAgent.__init__(self, env, brain, train_sample_size=1000, train_batch_size=50)
         

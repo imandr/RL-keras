@@ -11,15 +11,21 @@ class QBrain:
                     qnet_soft_update = None,             
                     qnet_hard_update = 10000             # train samples between live->target network copies
                     ):
-        if kind == "diff":
-            from .experimental import DifferentialQNet
-            self.QNet = DifferentialQNet(model, gamma = gamma)
-        elif kind == "diff2":
-            from .experimental import DifferentialQNet2
-            self.QNet = DifferentialQNet2(model, gamma = gamma, rel_weight=diff_qnet_weight)
+        if False:
+            pass
+        #elif kind == "diff":
+        #    from .experimental import DifferentialQNet
+        #    self.QNet = DifferentialQNet(model, gamma = gamma)
+        #elif kind == "diff2":
+        #    from .experimental import DifferentialQNet2
+        #    self.QNet = DifferentialQNet2(model, gamma = gamma, rel_weight=diff_qnet_weight)
+        elif kind == "diff3":
+            from .experimental import DifferentialQNet3
+            self.QNet = DifferentialQNet3(model, gamma = gamma, rel_weight=diff_qnet_weight)
         elif kind == "qv":
             from .experimental import QVNet
-            self.QNet = QVNet(model, gamma = gamma, rel_weight=diff_qnet_weight)
+            qmodel, vmodel = model
+            self.QNet = QVNet(qmodel, vmodel, gamma = gamma, rel_weight=diff_qnet_weight)
         elif kind in ("dqn","double","naive"):
             from .QNet import DQN
             self.QNet = DQN(model, kind=kind, gamma=gamma, soft_update = qnet_soft_update,
