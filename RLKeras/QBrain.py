@@ -3,7 +3,7 @@ import numpy as np
 from .tools import format_batch
 
 class QBrain:    
-    def __init__(self, model, kind = "dqn", gamma = 0.99, 
+    def __init__(self, model, kind = "dqn", gamma = 0.99, advantage = False,
                     # memory parameters
                     bypass_short_term = True, memory = None, memory_size = 200000, v_selectivity = False,
                     # dual DQN only
@@ -28,7 +28,7 @@ class QBrain:
             self.QNet = QVNet(qmodel, vmodel, gamma = gamma, rel_weight=diff_qnet_weight)
         elif kind in ("dqn","double","naive"):
             from .QNet import DQN
-            self.QNet = DQN(model, kind=kind, gamma=gamma, soft_update = qnet_soft_update,
+            self.QNet = DQN(model, kind=kind, gamma=gamma, soft_update = qnet_soft_update, advantage = advantage,
                     hard_update_samples=qnet_hard_update)
         else:
             raise ValueError("Unknown QNet kind %s" % (kind,))

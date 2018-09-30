@@ -43,13 +43,13 @@ class DQN(object):
     # kind="naive": 
     # model fits to itself:
     #
-    #    M(x0) -> reward + gamma * max(M(x1)) * (1-final)
+    #    M(x0,a) -> reward + gamma * max(M(x1)) * (1-final)
     #
     # kind="dqn": 
     # Implements ideas from Mnih (2015):
     # Online model M fits to target model T:
     #
-    #     M(x0) -> reward + gamma * max(T(x1)) * (1-final)
+    #     M(x0,a) -> reward + gamma * max(T(x1)) * (1-final)
     #
     # and M is copied to T periodically
     #
@@ -57,31 +57,48 @@ class DQN(object):
     # Implememts Hasselt (2015):
     # Online model M fits to target model T:
     #
-    #     M(x0) -> reward + gamma * (T(x1)[argmax(M(x1))]) * (1-final)
+    #     M(x0,a) -> reward + gamma * (T(x1)[argmax(M(x1))]) * (1-final)
     # 
     # and M is copied to T periodically
     #
+    # if "advantage" flag is set, replace top model layer with 2 new layers:
+    #
+    #   V = Dense(1)(top)
+    #   A = Dense(n)(top)
+    #   Q[a] = V + A[a] - mean_a(A[a])
+    #   
     
-    def __init__(self, model, kind="dqn", hard_update_samples = 100000, soft_update = None, gamma=0.99):
+    def __init__(self, model, kind="dqn", advantage=False, hard_update_samples = 100000, soft_update = None, gamma=0.99):
         self.Model = model
         self.TrainSamples = 0
         self.TrainSamplesBetweenUpdates = self.TrainSamplesToNextUpdate = hard_update_samples
         self.Gamma = gamma
-        self.XWidth = self.Model.inputs[0].shape[-1]
-        self.NActions = self.Model.output.shape[-1]
+        self.XWidth = self.Model.inputs[0].shape[-1].value
+        self.NActions = self.Model.output.shape[-1].value
         self.Kind = kind
         self.SoftUpdate = soft_update  #0.01
+        self.Advantage = advantage
 
     def compile(self, optimizer, metrics=[]):
+        
+        x_shape = (self.XWidth,)
+        q_shape = (self.NActions,)
+
+        if self.Advantage:
+            second_layer = self.Model.layers[-2]
+            advantage = Dense(self.NActions, activation="linear")(second_layer.output)
+            value = Dense(1, activation="linear")(second_layer.output)
+            def av_layer(args):
+                a, v = args
+                return v + a - K.mean(a, axis=-1, keepdims = True)
+            q = Lambda(av_layer, output_shape=q_shape)([advantage, value])
+            self.Model = Model(inputs=self.Model.inputs, output=q)
         
         self.TargetModel = clone_model(self.Model)
         self.TargetModel.compile(optimizer='sgd', loss='mse')
         self.Model.compile(optimizer='sgd', loss='mse')
         
         # build trainable model
-
-        x_shape = (self.XWidth,)
-        q_shape = (self.NActions,)
 
         x0 = Input(name="x0", shape=x_shape)
         mask = Input(name='mask', shape=q_shape)

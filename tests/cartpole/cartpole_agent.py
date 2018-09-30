@@ -15,14 +15,17 @@ from RLKeras.multi import MultiDQNAgent
 
 class CartPoleAgent(MultiDQNAgent):
     
-    def __init__(self, env, kind="diff", gamma=0.8, weight=0.9):
+    def __init__(self, env, kind="diff", gamma=0.8, weight=0.9, advantage=False):
         if kind == "qv":
             qmodel, vmodel = self.create_qv_models(env.observation_space.shape[0], env.action_space.n)
             model = (qmodel, vmodel)
         else:
             model = self.create_model(env.observation_space.shape[0], env.action_space.n)
             
-        brain = QBrain(model, kind=kind, gamma=gamma, v_selectivity=False, qnet_soft_update=0.01, diff_qnet_weight=weight)
+        brain = QBrain(model, 
+            kind=kind, advantage=advantage,
+            gamma=gamma, v_selectivity=False, 
+            qnet_soft_update=0.01, diff_qnet_weight=weight)
         brain.compile(Adadelta(), ["mse"])
         MultiDQNAgent.__init__(self, env, brain, train_sample_size=1000, train_batch_size=50)
         

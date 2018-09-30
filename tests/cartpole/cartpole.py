@@ -94,12 +94,13 @@ class QVectorLogger(Callback):
     def on_episode_end(self, *_, **__):
         self.LogFile.close()
 
-opts, args = getopt.getopt(sys.argv[1:], "k:r:h?g:w:")
+opts, args = getopt.getopt(sys.argv[1:], "k:r:h?g:w:a")
 opts = dict(opts)
 kind = opts.get("-k", "diff")
 run_log = opts.get("-r", "run_log.csv")
 gamma = float(opts.get("-g", 0.8))
 weight = float(opts.get("-w", 0.9))
+advantage = "-a" in opts
 
 if "-h" in opts or "-?" in opts:
     print """Usage:
@@ -110,7 +111,7 @@ if "-h" in opts or "-?" in opts:
 env = GymEnv(CartPoleEnv())
 
 print "Environment initialized:", env
-agent = CartPoleAgent(env, kind=kind, gamma=gamma, weight=weight)
+agent = CartPoleAgent(env, kind=kind, gamma=gamma, weight=weight, advantage=advantage)
 
 controller = SynchronousMultiAgentController(env, [agent],                 
     rounds_between_train = 5000, episodes_between_train = 1)
