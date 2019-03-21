@@ -1,0 +1,58 @@
+Env:
+
+	init(agents) -> observations
+	
+	step(agents, actions)
+	step(agents, actions)
+
+	feedback() -> new_observations, rewards, finals
+	
+Agent:
+
+	init(o)
+		init trajectory
+		self.observation = o
+	
+	action()
+		self.action = action(self.observation)
+		
+	
+	learn(o1, reward, final)
+		transition = (self.observation, self.action, o1, reward, final)
+		self.observation = o1
+		record(transition)
+		
+	end()
+	
+
+
+
+
+
+
+
+
+
+
+
+episode_begin()
+	- init trajectory
+
+action(o, p)
+	if transition:
+		transition.f = false
+		transition.o1 = o
+		record(transition)
+		new transition
+	transition.o = o
+	transition.p = p
+	a = action(...)
+	
+learn(a, r)
+	transition.a = a
+	transition.r = r
+	
+final(o)
+	transition.o1 = o
+	transition.f = true
+	record(transition)
