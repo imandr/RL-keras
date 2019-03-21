@@ -60,7 +60,7 @@ class ReplayMemory:
     def add_to_long(self, tups):
         self.Memory.extend(tups)
         if len(self.Memory) > self.HighWater:
-            print "reducing memory..."
+            #print "reducing memory..."
             self.Memory = random.sample(self.Memory, self.MaxSize)
             if self.FilterDuplicates:
                 self.Known = set(map(self.makeHashable, self.Memory+self.ShortTermMemory))

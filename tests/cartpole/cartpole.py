@@ -12,7 +12,7 @@ import math, getopt, sys
 np.set_printoptions(precision=4, suppress=True)
 
 class RunLogger(Callback):
-    
+
     def __init__(self, csv_out = None, loss_info_from = None):
         if isinstance(csv_out, str):
             csv_out = open(csv_out, "w")
@@ -21,15 +21,15 @@ class RunLogger(Callback):
         self.CSVOut = csv_out
         self.LossMA = None
         self.LossInfoFrom = loss_info_from
-        
-        
+
+
     def on_train_session_end(self, nsessions, logs):
         if logs["mean_metrics"] is not None: # training ?
             loss = math.sqrt(logs["mean_metrics"])
             if self.LossMA is None:
                 self.LossMA = loss
             self.LossMA += 0.1 * (loss-self.LossMA)
-    
+
     def on_run_end(self, param, logs={}):
         rewards = logs["run_rewards"]
         nagents = len(rewards)
@@ -45,11 +45,11 @@ class RunLogger(Callback):
             "  Loss MA:%.6f" % (loss_ma,), \
             "  Session reward per episode:", avg_reward
         if self.CSVOut is not None:
-            self.CSVOut.write("%d,%d,%d,%f,%f\n" % ( 
+            self.CSVOut.write("%d,%d,%d,%f,%f\n" % (
                     logs["total_train_episodes"],
                     logs["total_train_rounds"],
                     logs["total_train_steps"],
-                    avg_reward, 
+                    avg_reward,
                     loss_ma if loss_ma is not None else -1.0
                 )
             )
@@ -57,7 +57,7 @@ class RunLogger(Callback):
 
 
 class EpisodeLogger(Callback):
-    
+
     def on_episode_begin(self, nepisodes, logs={}):
         self.SumQ = None
         self.NSteps = 0
@@ -72,7 +72,7 @@ class EpisodeLogger(Callback):
             self.NSteps += 1
         for a, action in logs["actions"]:
             self.Actions[action] += 1
-    
+
     def on_episode_end(self, episode, logs):
         avq = self.SumQ/self.NSteps if self.NSteps > 0 else 0.0
         rewards = [r for t, r in logs["episode_rewards"]]
@@ -82,15 +82,15 @@ class EpisodeLogger(Callback):
             (episode, logs["nrounds"], rewards, avq, self.Actions)
 
 class QVectorLogger(Callback):
-    
+
     def on_episode_begin(self, *__, **_):
         self.LogFile = open("/tmp/qvector.log", "w")
-    
+
     def on_action_end(self, action_list, logs):
         o = logs["observations"][0][1]
         qv = logs["qvectors"][0][1]
         self.LogFile.write(" ".join(["%.3f" % (x,) for x in (list(o)+list(qv))]) + "\n")
-        
+
     def on_episode_end(self, *_, **__):
         self.LogFile.close()
 
@@ -108,15 +108,15 @@ if "-h" in opts or "-?" in opts:
     """
     sys.exit(1)
 
-env = GymEnv(CartPoleEnv())
+env = GymEnv(CartPoleEnv(), tlimit=500)
 
 print "Environment initialized:", env
 agent = CartPoleAgent(env, kind=kind, gamma=gamma, weight=weight, advantage=advantage)
 
-controller = SynchronousMultiAgentController(env, [agent],                 
+controller = SynchronousMultiAgentController(env, [agent],
     rounds_between_train = 5000, episodes_between_train = 1)
 
-taus = [1.0, 0.1, 0.01, 0.001]
+taus = [10.0, 1.0, 0.1, 0.01, 0.001]
 ntaus = len(taus)
 t = 0
 
@@ -130,11 +130,9 @@ for _ in range(20000):
         policy = BoltzmannQPolicy(tau)
         print "-- Training with tau=%.4f..." % (tau,)
         controller.fit(max_episodes=20, callbacks=[train_run_logger], policy=policy)
+        controller.random_fit(max_rounds=1000, callbacks=[train_run_logger])
         t += 1
     print "-- Testing..."
     controller.test(max_episodes=50, callbacks=[test_run_logger], policy=test_policy)
     controller.test(max_episodes=3, callbacks=[Visualizer(), EpisodeLogger()], policy=test_policy)
     #controller.test(max_episodes=20, callbacks=[], policy=test_policy)
-    
-
-    

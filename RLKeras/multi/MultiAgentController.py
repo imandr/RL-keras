@@ -24,6 +24,11 @@ class MultiAgentController:
         #print "fit"
         return self.run(self.Env, self.Agents, max_episodes, max_rounds, max_steps, 
             callbacks, True, policy)
+            
+    def random_fit(self, max_rounds = None, callbacks = None):
+        #print "fit"
+        return self.randomMoves(self.Agents, max_rounds, callbacks=callbacks) 
+    
 
     def test(self, max_episodes = None, max_rounds = None, max_steps = None, callbacks = None, policy=None):
         #print "test"
@@ -35,7 +40,7 @@ class MultiAgentController:
 
 class SynchronousMultiAgentController(MultiAgentController):
     
-    def randomMoves(self, agents, max_rounds, training=True, callbacks = None):
+    def randomMoves(self, agents, max_rounds, callbacks = None):
 
         callbacks = callbacks or []
         
@@ -48,7 +53,7 @@ class SynchronousMultiAgentController(MultiAgentController):
                 #print "randomMoves: memorizing:", obs0, action, reward, obs1, done, valids
                 agent.memorize((obs0, action, reward, obs1, done, valids), reward)
             self.RoundsToTrain -= 1
-            if training:    self.trainIfNeeded(agents, callbacks)
+            self.trainIfNeeded(agents, callbacks)
 
             #self.Brain.memorize((self.Observation0, self.Action0, self.Reward0, 
             #    self.Observation1, False, self.Valids1), self.Reward0)    

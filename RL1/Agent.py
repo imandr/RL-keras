@@ -50,7 +50,7 @@ class Env:
     
     NAgents = 2
     
-    def init(self, agents, random = False):
+    def reset(self, agents, random = False):
         return observations
         
     def addAgent(self, agent, random = False):
@@ -68,11 +68,11 @@ class Env:
     def feedback(self, agents):
         if not isinstance(agents, list):
             agents = [agents]
-        return [(agent, new_observation, reward, info) for agent in agents]
+        return [(agent, new_observation, reward, done, info) for agent in agents]
         
-    def randomMoves(self, agent):
+    def randomMoves(self, size):
         state0, action, state1, reward, done, info = self.Env.randomStep()
         if self.TLimit:
             done = done or random.random() * self.TLimit+1 < 1.0
-        return (agent, state0, action, state1, reward, done, info)
+        return (state0, action, state1, reward, done, info)
     

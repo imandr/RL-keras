@@ -23,7 +23,7 @@ class GameDriver(Driver):
     def sample(self, size):
         samples = []
         while len(samples) < size:
-            observations = self.Env.init(self.Agents)
+            observations = self.Env.reset(self.Agents)
             active_agents = self.Agents
             for agent, observation in zip(active_agents, observations):
                 agent.init(observation)

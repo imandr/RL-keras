@@ -16,7 +16,7 @@ class CartPoleEnv(gym.Env):
         'video.frames_per_second' : 50
     }
 
-    TMAX = 500
+    TMAX = 1000
 
     def __init__(self):
         self.gravity = 9.8
@@ -39,7 +39,7 @@ class CartPoleEnv(gym.Env):
             self.theta_threshold_radians * 2,
             np.finfo(np.float32).max])      #, 1.0])
 
-        self.action_space = spaces.Discrete(2)
+        self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(-high, high)
 
         self.seed()
@@ -59,12 +59,19 @@ class CartPoleEnv(gym.Env):
         self.steps_beyond_done = None
         self.T = self.TMAX
         return np.array(self.state)
-
-    def step(self, action):
+        
+    def randomStep(self):
+        state0 = self.observation_space.sample()
+        action = self.action_space.sample()
+        state1, reward, done, info = self.step(action, from_state=state0, update_state=False)
+        return state0, action, state1, reward, done, info
+        
+    def step(self, action, from_state=None, update_state=True):
         assert self.action_space.contains(action), "%r (%s) invalid"%(action, type(action))
-        state = self.state
+        state = self.state if from_state is None else from_state
         x, x_dot, theta, theta_dot = state      #, t = state
-        force = self.force_mag if action==1 else -self.force_mag
+        #force = self.force_mag if action==1 else -self.force_mag
+        force = self.force_mag * (action-1)
         costheta = math.cos(theta)
         sintheta = math.sin(theta)
         temp = (force + self.polemass_length * theta_dot * theta_dot * sintheta) / self.total_mass
@@ -78,13 +85,19 @@ class CartPoleEnv(gym.Env):
                 or x > self.x_threshold \
                 or theta < -self.theta_threshold_radians \
                 or theta > self.theta_threshold_radians
-        self.T -= 1
-        self.state = (x,x_dot,theta,theta_dot)      #, float(self.T)/self.TMAX)
+                
+        if update_state:
+            self.T -= 1
+            self.state = (x,x_dot,theta,theta_dot)      #, float(self.T)/self.TMAX)
 
         done = fell or self.T <= 0
-        
+
         if fell:    reward = -1.0
         elif done:  reward = 1.0
+        else:       reward = 0.0
+
+        if fell:    reward = -1.0
+        elif done:  reward = 0.0
         else:       reward = 0.0
 
         return np.array(self.state), reward, done, {}

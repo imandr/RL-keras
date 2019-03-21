@@ -1,7 +1,7 @@
 from generate import generator
 from model import function_model, training_model
 
-fm = function_model(2,1)
+fm = function_model(2, 4)
 tm = training_model(2, fm)
 g = generator(200)
 
