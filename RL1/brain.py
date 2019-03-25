@@ -23,18 +23,17 @@ def defaultQModel(inp_width, out_width):
     
 class Brain(object):
     
-    def __init__(self, qmodel, model_type, policy, gamma, *params, **args):
+    def __init__(self, qmodel, model_type, policy, gamma, memory_size, random_mix, *params, **args):
         self.QModel = qmodel
         self.RLModel = self.create_rl_model(qmodel, model_type, gamma, *params, **args)
         self.Policy = policy
         self.TModel = self.RLModel.tmodel()
+        source = MixedDriver(env, self, random_mix)
+        self.Memory = ReplayMemory(source, memory_size)
         
     def create_rl_model(self, qmodel, model_type, gamma, *params, **args):
         if model_type == "ddiff":
             return DirectDiffModel(qmodel, gamma, *params, **args)
-        
-    def tmodel(self):
-        return self.TModel
         
     def q(self, obsrvation):
         return self.QModel.predict_on_batch([observation])[0]
@@ -44,16 +43,18 @@ class Brain(object):
         a = self.Policy(q)
         return a, q
 
-    def trainingData(self, o0, a, o1, r, f):
-        return self.RLModel.training_data(o0, a, o1, r, f)
-
-class Trainer(object):
-    def __init__(self, env, brain, memory_size, random_mix, mbsize):
-        source = MixedDriver(mbsize, env, brain, random_mix)
-        self.Memory = ReplayMemory(source, memory_size)
-        self.MBSize = mbsize
+    def training_model(self):
+        return self.TModel
         
-    def __iter__(self):
-        return self.Memory.generate_samples(self.MBSize)
-
+    def trainig_data_generator(self, mbsize):
+        return (
+            self.RLModel.training_data(*data) for data in self.Memory.generate_samples(mbsize)
+        )
+        
+    def episideBegin(self):
+        pass
+        
+    def episodeEnd(self):
+        return {}
+        
         

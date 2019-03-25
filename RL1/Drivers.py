@@ -36,12 +36,13 @@ class GameDriver(Driver):
                     agent.step(new_observation, reward, done)
                     if done:
                         samples += agent.trajectory(clear=True)
+                        agent.end()
                     else:
                         active_agents.append(agent)
         return samples
         
 class MixedDriver(Driver):
-    def __init__(self, chunk, env, brain, random_fraction = 0.0):
+    def __init__(self, env, brain, random_fraction = 0.0, chunk = 100):
         self.RandomFraction = random_fraction
         self.NGeneratedRandom = 0
         self.NGeneratedGame = 0

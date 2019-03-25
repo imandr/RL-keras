@@ -46,11 +46,10 @@ class DirectDiffModel(RLModel):
         model.compile(Adam(lr=1e-3), ["mse"])
         return model
         
-    def training_data(self, sasf, r):
+    def training_data(self, s0, action, s1, final, reward):
         n_actions = self.NActions
-        s0, action, s1, final = sasf
         mask = np.zeros((len(s0), n_actions))
         for i in xrange(n_actions):
             mask[action==i, i] = 1.0
-        return [s0, mask, s1, final], r
+        return [s0, mask, s1, final], [reward]
 

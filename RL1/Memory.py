@@ -43,5 +43,5 @@ class ReplayMemory(object):
             s1 = np.array(columns[2])
             r = np.array(columns[3])
             f = np.array(columns[4])
-            yield [s0, a, s1, f], r
+            yield s0, a, s1, f, r
             

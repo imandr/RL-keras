@@ -1,5 +1,3 @@
-
-
 class Agent:
     
     def __init__(self, env, brain):
@@ -12,12 +10,12 @@ class Agent:
         self.QVector = None
         self.Trajectory = []
         
-        self._EnvContext = None
+        self._State = None
         
     def init(self, observation):
         self.Trajectory = []
         self.Observation0 = observation
-        self.Brain.episodeBegin()
+        return self.Brain.episodeBegin()
     
     def action(self):
         a, qvector = self.Brain.action(self.Observation)
@@ -32,8 +30,8 @@ class Agent:
         self.Done = done
 
     def end(self):
-        self.Brain.episodeEnd()
-        return self.Trajectory
+        info = self.Brain.episodeEnd()
+        return self.Trajectory, info
 
     def info(self):
         return dict(
