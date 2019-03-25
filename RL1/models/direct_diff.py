@@ -46,7 +46,7 @@ class DirectDiffModel(RLModel):
         model.compile(Adam(lr=1e-3), ["mse"])
         return model
         
-    def augment_data(self, sasf, r):
+    def training_data(self, sasf, r):
         n_actions = self.NActions
         s0, action, s1, final = sasf
         mask = np.zeros((len(s0), n_actions))

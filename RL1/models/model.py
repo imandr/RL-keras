@@ -28,21 +28,19 @@ class RLModel(object):
         self.TModel = self.trainig_model(qmodel, gamma, *params, **args)
         
     def fit_generator(self, generator, *params, **args):
+        return self.TModel.fit_generator(
+                (self.training_data(*data) for data in generator), 
+                *params, **args
+        )
         
-        def augment_data(g):
-            for x, y in g:
-                yield self.augment_data(x, y)
-                
-        return self.TModel.fit_generator(augment_data(generator), *params, **args)
-        
-    def predict_on_batch(self, s):
-        return self.QModel.predict_on_batch(s)
+    def predict_on_batch(self, *params, **args):
+        return self.QModel.predict_on_batch(*params, **args)
         
     def __call__(self, *params, **kv):
         return self.QModel(*params, **kv)
         
-    def augment_data(self, x, y):
-        return x, y
+    def training_data(self, *params):
+        return params
         
     def trainig_model(self, qmodel, gamma, *params, **args):
         raise NotImplementedError

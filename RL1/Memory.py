@@ -2,20 +2,20 @@ import random
 
 class ReplayMemory(object):
     
-    def __init__(self, generator, low_water_mark, high_water_mark=None):
+    def __init__(self, source, low_water_mark, high_water_mark=None):
         self.Memory = []
-        self.Generator = generator        # generator and sample sizes
+        self.Source = source        
         self.LowWater = low_water_mark
-        self.HighWater = high_water_mark or int(low_water_mark * 1.2)
+        self.HighWater = high_water_mark or int(low_water_mark * 2)
         self.RefreshRate = 0.1
         self.Cursor = 0
 
     def fill(self, n):
         if len(self.Memory) - self.Cursor < n:
-            nflush = int(self.RefreshRate * len(self.Memory))
+            nflush = int(self.RefreshRate * self.Cursor)
             self.Memory = self.Memory[nflush:]
             while len(self.Memory) < max(self.LowWater, n):
-                sample = self.Generator.generate()
+                sample = self.Source.generate()
                 self.Memory += sample
             random.shuffle(self.Memory)    
             self.Cursor = 0      
@@ -24,7 +24,7 @@ class ReplayMemory(object):
         assert isinstance(sample, list)
         self.Memory = self.Memory + samples
         if len(self.Memory) > self.HighWater:
-            self.Memory = self.Memory[-self.LowWater:]
+            self.Memory = self.Memory[-self.HighWater:]
             random.shuffle(self.Memory)
             self.Cursor = 0
             
@@ -45,11 +45,3 @@ class ReplayMemory(object):
             f = np.array(columns[4])
             yield [s0, a, s1, f], r
             
-class GeneratorFromMemory(object):
-    
-    def __init__(self, mbsize, memory):
-        self.Memory = memory
-        self.MBSize = mbsize
-        
-    def __iter__(self):
-        return self.Memory.generate_samples(self.MBSize)
