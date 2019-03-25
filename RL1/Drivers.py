@@ -11,16 +11,16 @@ class RandomDriver(Driver):
     def __init__(self, env):
         Driver.__init__(self, env)
     
-    def sample(self, size):
+    def samples(self, size):
         return self.Env.randomMoves(size)
         
 class GameDriver(Driver):
     
-    def __init__(self, env, nagents, agent_class, brain, *params):
+    def __init__(self, env, brain, nagents = None):
         Driver.__init__(self, env)
-        self.Agents = [agent_class(brain, *params) for _ in xrange(nagents)]
+        self.Agents = [Agent(env, brain) for _ in xrange(nagents or env.NAgents)]
     
-    def sample(self, size):
+    def samples(self, size):
         samples = []
         while len(samples) < size:
             observations = self.Env.reset(self.Agents)
@@ -39,9 +39,41 @@ class GameDriver(Driver):
                     else:
                         active_agents.append(agent)
         return samples
-            
-            
-            
-         
+        
+class MixedDriver(Driver):
+    def __init__(self, chunk, env, brain, random_fraction = 0.0):
+        self.RandomFraction = random_fraction
+        self.NGeneratedRandom = 0
+        self.NGeneratedGame = 0
+        self.Env = env
+        self.Brain = brain
+        self.GameDriver = GameDriver(env, brain)
+        self.RandomDriver = RandomDriver(env)
+        self.ChunkSize = chunk
+        
+    def chunk(self):
+        generate_random = self.RandomFraction > 0.0
+        ntotal = self.NGeneratedRandom + self.NGeneratedGame
+        if ntotal > 0 and generate_random:
+            current_fraction = float(self.NGeneratedRandom)/float(ntotal)
+            generate_random = current_fraction < self.RandomFraction
+        if generate_random:
+            samples = self.RandomDriver.samples(self.ChunkSize)
+            self.NGeneratedRandom += len(samples)
+        else 
+            samples = self.GameDriver.samples(self.ChunkSize)
+            self.NGeneratedGame += len(samples)
+        return samples
+        
+    def samples(self, size):
+        s = []
+        while len(s) < size:
+            s += self.chunk()
+        return s
+        
+        
+        
+        
+        
     
     

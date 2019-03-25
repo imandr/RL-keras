@@ -14,6 +14,7 @@ class GymEnv:
         self.Reward = None
         self.Done = False
         self.Info = None
+        self.NAgents = 1
         
     def __str__(self):
         return "GymEnv(%s)" % (self.Env,)

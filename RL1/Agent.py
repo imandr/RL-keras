@@ -2,7 +2,8 @@
 
 class Agent:
     
-    def __init__(self, brain):
+    def __init__(self, env, brain):
+        self.Env = env
         self.Brain = brain
         self.Done = False
         self.Observation = None
